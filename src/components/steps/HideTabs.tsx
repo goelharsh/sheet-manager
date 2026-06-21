@@ -9,7 +9,8 @@ interface HideTabsProps {
   spreadsheetId: string;
   hideTabs: (spreadsheetId: string, sheetIds: number[]) => Promise<void>;
   isLoading: boolean;
-  onDone: () => void;
+  /** Called with the titles of the tabs that were hidden */
+  onDone: (hiddenTitles: string[]) => void;
   onToast: (type: "success" | "error" | "info", title: string, desc?: string) => void;
 }
 
@@ -53,9 +54,9 @@ export function HideTabs({
       setApplied(true);
       const hiddenTitles = tabs
         .filter((t) => hiddenIds.has(t.sheetId))
-        .map((t) => t.title)
-        .join(", ");
-      onToast("success", "Tabs hidden!", `Hidden: ${hiddenTitles}`);
+        .map((t) => t.title);
+      const hiddenTitlesStr = hiddenTitles.join(", ");
+      onToast("success", "Tabs hidden!", `Hidden: ${hiddenTitlesStr}`);
     } catch {
       onToast("error", "Failed to hide tabs", "Please try again.");
     }
@@ -112,7 +113,12 @@ export function HideTabs({
         </div>
 
         <button
-          onClick={onDone}
+          onClick={() => {
+            const hiddenTitles = tabs
+              .filter((t) => hiddenIds.has(t.sheetId))
+              .map((t) => t.title);
+            onDone(hiddenTitles);
+          }}
           className="btn-primary"
           style={{ maxWidth: "320px" }}
         >

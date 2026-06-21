@@ -3,29 +3,79 @@
 import React, { useState } from "react";
 import { Share2, Copy, Check, ExternalLink, Globe, RefreshCw } from "lucide-react";
 
+// ─── Props ────────────────────────────────────────────────────────────────────
+
 interface ShareSheetProps {
   spreadsheetId: string;
+  /** Name of the sheet — forwarded to Airtable activity log */
+  sheetName: string;
+  /** Titles of tabs chosen to be hidden — forwarded to Airtable activity log */
+  hiddenTabs: string[];
   shareSheet: (fileId: string) => Promise<string>;
   isLoading: boolean;
   onToast: (type: "success" | "error" | "info", title: string, desc?: string) => void;
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function ShareSheet({
   spreadsheetId,
+  sheetName,
+  hiddenTabs,
   shareSheet,
   isLoading,
   onToast,
 }: ShareSheetProps) {
   const [shareableLink, setShareableLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [logging, setLogging] = useState(false);
+
+  // ── Log activity to Airtable ───────────────────────────────────────────────
+  // Fire-and-forget: logging never blocks the share UX.
+  // If Airtable isn't configured yet, we just warn in the console.
+  const logActivity = async (shareUrl: string, status: "Success" | "Failed") => {
+    setLogging(true);
+    try {
+      const res = await fetch("/api/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sheetName,
+          spreadsheetId,
+          shareUrl,
+          hiddenTabs,
+          status,
+        }),
+      });
+
+      if (res.ok) {
+        onToast("info", "📋 Logged to Airtable", "Activity recorded in your dashboard.");
+      } else {
+        const data = await res.json();
+        // Warn only — don't surface an error toast if Airtable isn't set up yet
+        console.warn("[Airtable log] Not configured:", data.error);
+      }
+    } catch (err) {
+      // Silent fail on network error
+      console.warn("[Airtable log] Network error:", err);
+    } finally {
+      setLogging(false);
+    }
+  };
+
+  // ── Share handler ──────────────────────────────────────────────────────────
 
   const handleShare = async () => {
     try {
       const link = await shareSheet(spreadsheetId);
       setShareableLink(link);
       onToast("success", "Sheet shared!", "Anyone with the link can view it.");
+      // Log success to Airtable
+      await logActivity(link, "Success");
     } catch {
       onToast("error", "Failed to share", "Check your Drive permissions and try again.");
+      // Log failure to Airtable
+      await logActivity("", "Failed");
     }
   };
 
@@ -40,6 +90,8 @@ export function ShareSheet({
       onToast("error", "Copy failed", "Please copy the link manually.");
     }
   };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
@@ -85,15 +137,15 @@ export function ShareSheet({
 
           <button
             onClick={handleShare}
-            disabled={isLoading}
+            disabled={isLoading || logging}
             className="btn-primary"
           >
-            {isLoading ? (
+            {isLoading || logging ? (
               <>
                 <svg className="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                 </svg>
-                Generating link…
+                {logging ? "Logging to Airtable…" : "Generating link…"}
               </>
             ) : (
               <>
