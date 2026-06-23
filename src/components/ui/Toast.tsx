@@ -26,32 +26,32 @@ const toastConfig: Record<
   }
 > = {
   success: {
-    icon: <CheckCircle2 size={16} strokeWidth={2.5} />,
-    iconBg: "#dcfce7",
-    iconColor: "#16a34a",
-    titleColor: "#15803d",
-    accent: "#16a34a",
+    icon: <CheckCircle2 size={15} strokeWidth={2.5} />,
+    iconBg: "#14532d",
+    iconColor: "#4ade80",
+    titleColor: "#f9fafb",
+    accent: "#22c55e",
   },
   error: {
-    icon: <XCircle size={16} strokeWidth={2.5} />,
-    iconBg: "#fee2e2",
-    iconColor: "#dc2626",
-    titleColor: "#b91c1c",
-    accent: "#dc2626",
+    icon: <XCircle size={15} strokeWidth={2.5} />,
+    iconBg: "#7f1d1d",
+    iconColor: "#f87171",
+    titleColor: "#f9fafb",
+    accent: "#ef4444",
   },
   info: {
-    icon: <Info size={16} strokeWidth={2.5} />,
-    iconBg: "#eef2ff",
-    iconColor: "#4355e8",
-    titleColor: "#3730a3",
-    accent: "#4355e8",
+    icon: <Info size={15} strokeWidth={2.5} />,
+    iconBg: "#1e3a5f",
+    iconColor: "#60a5fa",
+    titleColor: "#f9fafb",
+    accent: "#3b82f6",
   },
   warning: {
-    icon: <AlertTriangle size={16} strokeWidth={2.5} />,
-    iconBg: "#fef3c7",
-    iconColor: "#d97706",
-    titleColor: "#b45309",
-    accent: "#d97706",
+    icon: <AlertTriangle size={15} strokeWidth={2.5} />,
+    iconBg: "#78350f",
+    iconColor: "#fbbf24",
+    titleColor: "#f9fafb",
+    accent: "#f59e0b",
   },
 };
 
@@ -75,9 +75,9 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
     <div
       className={`toast ${visible ? "toast--enter" : "toast--exit"}`}
       style={{
-        borderLeft: `3.5px solid ${cfg.accent}`,
+        borderLeft: `3px solid ${cfg.accent}`,
         opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0) scale(1)" : "translateY(10px) scale(0.96)",
+        transform: visible ? "translateY(0) scale(1)" : "translateY(8px) scale(0.96)",
       }}
     >
       <div
@@ -87,11 +87,11 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
         {cfg.icon}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: "13.5px", fontWeight: 700, color: cfg.titleColor, lineHeight: 1.3 }}>
+        <p style={{ fontSize: "13px", fontWeight: 600, color: cfg.titleColor, lineHeight: 1.3 }}>
           {toast.title}
         </p>
         {toast.description && (
-          <p style={{ fontSize: "12px", color: "#78716c", marginTop: "3px", lineHeight: 1.45 }}>
+          <p style={{ fontSize: "11.5px", color: "#9ca3af", marginTop: "3px", lineHeight: 1.45 }}>
             {toast.description}
           </p>
         )}
@@ -105,7 +105,7 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
           background: "none",
           border: "none",
           cursor: "pointer",
-          color: "#a8a29e",
+          color: "#6b7280",
           display: "flex",
           alignItems: "center",
           padding: "2px",
@@ -113,11 +113,11 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
           flexShrink: 0,
           transition: "color 0.15s",
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = "#57534e")}
-        onMouseLeave={(e) => (e.currentTarget.style.color = "#a8a29e")}
+        onMouseEnter={(e) => (e.currentTarget.style.color = "#d1d5db")}
+        onMouseLeave={(e) => (e.currentTarget.style.color = "#6b7280")}
         aria-label="Dismiss"
       >
-        <X size={14} />
+        <X size={13} />
       </button>
     </div>
   );
