@@ -68,6 +68,7 @@ export function CellControlPanel({
   onSheetsChange,
   onCloseCellPanel,
 }: CellControlPanelProps) {
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const currentSheet = sheets[activeSheetIdx];
   const { row, col } = selectedCell;
   const cell: CellData = currentSheet?.data[row]?.[col] || {
@@ -279,7 +280,7 @@ export function CellControlPanel({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: "5px",
+          gap: "6px",
           border: "none",
           background: "transparent",
           color: "var(--at-accent)",
@@ -287,244 +288,276 @@ export function CellControlPanel({
           fontWeight: 600,
           cursor: "pointer",
           padding: 0,
+          width: "fit-content",
+          transition: "color 0.15s ease",
         }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = "var(--at-accent-dark)")}
+        onMouseLeave={(e) => (e.currentTarget.style.color = "var(--at-accent)")}
       >
-        <ChevronLeft size={13} />
+        <ChevronLeft size={14} />
         Back to step configuration
       </button>
 
-      {/* Cell Reference Header */}
-      <div
-        style={{
-          borderBottom: "1px solid var(--at-border-light)",
-          paddingBottom: "12px",
-        }}
-      >
-        <h3
-          style={{ fontSize: "16px", fontWeight: 700, color: "var(--at-text)" }}
-        >
-          Cell {cellRef} Actions
-        </h3>
-        <p
-          style={{
-            fontSize: "12px",
-            color: "var(--at-text-soft)",
-            marginTop: "2px",
-          }}
-        >
-          Modify cell data, styles, visibility, or structure.
-        </p>
-      </div>
-
       {/* Accordion 1: Formatting Settings */}
       <CollapsibleSection title="Formatting Settings" defaultOpen={true}>
-        {/* Edit Value */}
+        {/* Formula Bar Cell Content */}
         <div>
-          <label className="field-label" htmlFor="cell-value-textarea">
-            Cell Content
+          <label className="field-label" htmlFor="cell-value-textarea" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+            <span>Cell Value</span>
+            {cell.value && (
+              <button
+                type="button"
+                onClick={() => updateCell("", style)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--clr-error)",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: 0,
+                  transition: "opacity 0.15s ease",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.8")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+              >
+                Clear text
+              </button>
+            )}
           </label>
-          <textarea
-            id="cell-value-textarea"
-            value={cell.value}
-            onChange={handleValueChange}
-            placeholder="Empty cell..."
-            rows={3}
+          <div
+            id="formula-bar-container"
             style={{
-              width: "100%",
-              padding: "8px 11px",
+              display: "flex",
+              alignItems: "stretch",
               border: "1px solid var(--at-border)",
               borderRadius: "var(--radius-sm)",
               background: "var(--at-surface-2)",
-              fontFamily: "var(--font-body)",
-              fontSize: "13px",
-              color: "var(--at-text)",
-              resize: "vertical",
-              outline: "none",
+              overflow: "hidden",
+              transition: "border-color 0.15s ease, box-shadow 0.15s ease",
             }}
-            onFocus={(e) =>
-              (e.currentTarget.style.borderColor = "var(--at-accent)")
-            }
-            onBlur={(e) =>
-              (e.currentTarget.style.borderColor = "var(--at-border)")
-            }
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "0 11px",
+                borderRight: "1px solid var(--at-border-light)",
+                background: "var(--at-tab-hover)",
+                color: "var(--at-accent)",
+                fontFamily: "monospace",
+                fontSize: "13px",
+                fontWeight: "bold",
+                fontStyle: "italic",
+                userSelect: "none",
+              }}
+            >
+              fx
+            </div>
+            <textarea
+              id="cell-value-textarea"
+              value={cell.value}
+              onChange={handleValueChange}
+              placeholder="Enter value or formula..."
+              rows={3}
+              style={{
+                flex: 1,
+                padding: "8px 11px",
+                border: "none",
+                background: "transparent",
+                fontFamily: "var(--font-body)",
+                fontSize: "13px",
+                color: "var(--at-text)",
+                resize: "vertical",
+                outline: "none",
+              }}
+              onFocus={() => {
+                const container = document.getElementById("formula-bar-container");
+                if (container) {
+                  container.style.borderColor = "var(--at-accent)";
+                  container.style.boxShadow = "0 0 0 2px var(--at-accent-light)";
+                }
+              }}
+              onBlur={() => {
+                const container = document.getElementById("formula-bar-container");
+                if (container) {
+                  container.style.borderColor = "var(--at-border)";
+                  container.style.boxShadow = "none";
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Segmented Controls for Typography and Alignment */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", alignItems: "end" }}>
+          {/* Typography Segment */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <span className="field-label" style={{ margin: 0 }}>Typography</span>
+            <div style={{ display: "flex", width: "100%", height: "32px", border: "1px solid var(--at-border)", borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
+              <button
+                type="button"
+                onClick={() => toggleStyle("bold")}
+                style={{
+                  flex: 1,
+                  height: "100%",
+                  border: "none",
+                  background: style.bold ? "var(--at-accent-light)" : "var(--at-surface)",
+                  color: style.bold ? "var(--at-accent)" : "var(--at-text-muted)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRight: "1px solid var(--at-border-light)",
+                  transition: "background 0.1s",
+                }}
+                title="Bold"
+              >
+                <Bold size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleStyle("italic")}
+                style={{
+                  flex: 1,
+                  height: "100%",
+                  border: "none",
+                  background: style.italic ? "var(--at-accent-light)" : "var(--at-surface)",
+                  color: style.italic ? "var(--at-accent)" : "var(--at-text-muted)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRight: "1px solid var(--at-border-light)",
+                  transition: "background 0.1s",
+                }}
+                title="Italic"
+              >
+                <Italic size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleStyle("underline")}
+                style={{
+                  flex: 1,
+                  height: "100%",
+                  border: "none",
+                  background: style.underline ? "var(--at-accent-light)" : "var(--at-surface)",
+                  color: style.underline ? "var(--at-accent)" : "var(--at-text-muted)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "background 0.1s",
+                }}
+                title="Underline"
+              >
+                <Underline size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Alignment Segment */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <span className="field-label" style={{ margin: 0 }}>Align</span>
+            <div style={{ display: "flex", width: "100%", height: "32px", border: "1px solid var(--at-border)", borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
+              <button
+                type="button"
+                onClick={() => setAlign("left")}
+                style={{
+                  flex: 1,
+                  height: "100%",
+                  border: "none",
+                  background: style.align === "left" || !style.align ? "var(--at-accent-light)" : "var(--at-surface)",
+                  color: style.align === "left" || !style.align ? "var(--at-accent)" : "var(--at-text-muted)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRight: "1px solid var(--at-border-light)",
+                  transition: "background 0.1s",
+                }}
+                title="Align Left"
+              >
+                <AlignLeft size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setAlign("center")}
+                style={{
+                  flex: 1,
+                  height: "100%",
+                  border: "none",
+                  background: style.align === "center" ? "var(--at-accent-light)" : "var(--at-surface)",
+                  color: style.align === "center" ? "var(--at-accent)" : "var(--at-text-muted)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRight: "1px solid var(--at-border-light)",
+                  transition: "background 0.1s",
+                }}
+                title="Align Center"
+              >
+                <AlignCenter size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setAlign("right")}
+                style={{
+                  flex: 1,
+                  height: "100%",
+                  border: "none",
+                  background: style.align === "right" ? "var(--at-accent-light)" : "var(--at-surface)",
+                  color: style.align === "right" ? "var(--at-accent)" : "var(--at-text-muted)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "background 0.1s",
+                }}
+                title="Align Right"
+              >
+                <AlignRight size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Side-by-Side Dropdowns */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+          <Dropdown
+            label="Text Color"
+            options={TEXT_COLORS.map(tc => ({
+              label: tc.name,
+              value: tc.value,
+              color: tc.value || undefined
+            }))}
+            selectedValue={style.color || ""}
+            onSelect={setColor}
+            placeholder="Default"
+          />
+
+          <Dropdown
+            label="Background"
+            options={BG_COLORS.map(bgCol => ({
+              label: bgCol.name,
+              value: bgCol.value,
+              color: bgCol.value || undefined
+            }))}
+            selectedValue={style.bg || ""}
+            onSelect={setBg}
+            placeholder="None"
           />
         </div>
-
-        {/* Text Styles & Alignments */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <span className="field-label">Typography & Align</span>
-          <div style={{ display: "flex", gap: "6px" }}>
-            <button
-              onClick={() => toggleStyle("bold")}
-              style={{
-                flex: 1,
-                height: "32px",
-                border: `1.5px solid ${style.bold ? "var(--at-accent)" : "var(--at-border)"}`,
-                background: style.bold
-                  ? "var(--at-accent-light)"
-                  : "var(--at-surface)",
-                color: style.bold ? "var(--at-accent)" : "var(--at-text-muted)",
-                borderRadius: "6px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              title="Bold"
-            >
-              <Bold size={15} />
-            </button>
-            <button
-              onClick={() => toggleStyle("italic")}
-              style={{
-                flex: 1,
-                height: "32px",
-                border: `1.5px solid ${style.italic ? "var(--at-accent)" : "var(--at-border)"}`,
-                background: style.italic
-                  ? "var(--at-accent-light)"
-                  : "var(--at-surface)",
-                color: style.italic ? "var(--at-accent)" : "var(--at-text-muted)",
-                borderRadius: "6px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              title="Italic"
-            >
-              <Italic size={15} />
-            </button>
-            <button
-              onClick={() => toggleStyle("underline")}
-              style={{
-                flex: 1,
-                height: "32px",
-                border: `1.5px solid ${style.underline ? "var(--at-accent)" : "var(--at-border)"}`,
-                background: style.underline
-                  ? "var(--at-accent-light)"
-                  : "var(--at-surface)",
-                color: style.underline
-                  ? "var(--at-accent)"
-                  : "var(--at-text-muted)",
-                borderRadius: "6px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              title="Underline"
-            >
-              <Underline size={15} />
-            </button>
-          </div>
-
-          <div style={{ display: "flex", gap: "6px" }}>
-            <button
-              onClick={() => setAlign("left")}
-              style={{
-                flex: 1,
-                height: "32px",
-                border: `1.5px solid ${style.align === "left" || !style.align ? "var(--at-accent)" : "var(--at-border)"}`,
-                background:
-                  style.align === "left" || !style.align
-                    ? "var(--at-accent-light)"
-                    : "var(--at-surface)",
-                color:
-                  style.align === "left" || !style.align
-                    ? "var(--at-accent)"
-                    : "var(--at-text-muted)",
-                borderRadius: "6px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              title="Align Left"
-            >
-              <AlignLeft size={15} />
-            </button>
-            <button
-              onClick={() => setAlign("center")}
-              style={{
-                flex: 1,
-                height: "32px",
-                border: `1.5px solid ${style.align === "center" ? "var(--at-accent)" : "var(--at-border)"}`,
-                background:
-                  style.align === "center"
-                    ? "var(--at-accent-light)"
-                    : "var(--at-surface)",
-                color:
-                  style.align === "center"
-                    ? "var(--at-accent)"
-                    : "var(--at-text-muted)",
-                borderRadius: "6px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              title="Align Center"
-            >
-              <AlignCenter size={15} />
-            </button>
-            <button
-              onClick={() => setAlign("right")}
-              style={{
-                flex: 1,
-                height: "32px",
-                border: `1.5px solid ${style.align === "right" ? "var(--at-accent)" : "var(--at-border)"}`,
-                background:
-                  style.align === "right"
-                    ? "var(--at-accent-light)"
-                    : "var(--at-surface)",
-                color:
-                  style.align === "right"
-                    ? "var(--at-accent)"
-                    : "var(--at-text-muted)",
-                borderRadius: "6px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              title="Align Right"
-            >
-              <AlignRight size={15} />
-            </button>
-          </div>
-        </div>
-
-        {/* Colors Dropdowns */}
-        <Dropdown
-          label="Text Color"
-          options={TEXT_COLORS.map(tc => ({
-            label: tc.name,
-            value: tc.value,
-            color: tc.value || undefined
-          }))}
-          selectedValue={style.color || ""}
-          onSelect={setColor}
-          placeholder="Default Text Color"
-        />
-
-        <Dropdown
-          label="Background Fill"
-          options={BG_COLORS.map(bgCol => ({
-            label: bgCol.name,
-            value: bgCol.value,
-            color: bgCol.value || undefined
-          }))}
-          selectedValue={style.bg || ""}
-          onSelect={setBg}
-          placeholder="Default Background Fill"
-        />
       </CollapsibleSection>
 
       {/* Accordion 2: Visibility Settings */}
       <CollapsibleSection title="Visibility Settings" defaultOpen={false}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--at-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Hide Operations</span>
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <span className="field-label" style={{ margin: 0 }}>Hide Commands</span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
             <button
               onClick={() => toggleRowVisibility(row)}
               className="tbl-ctrl-btn"
@@ -532,9 +565,9 @@ export function CellControlPanel({
                 padding: "8px 12px",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "8px",
                 fontSize: "12px",
-                justifyContent: "flex-start",
                 width: "100%",
               }}
               title={`Hide Row ${row + 1}`}
@@ -549,15 +582,15 @@ export function CellControlPanel({
                 padding: "8px 12px",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "8px",
                 fontSize: "12px",
-                justifyContent: "flex-start",
                 width: "100%",
               }}
               title={`Hide Column ${getColLabel(col)}`}
             >
               <EyeOff size={13} />
-              Hide Column {getColLabel(col)}
+              Hide Col {getColLabel(col)}
             </button>
           </div>
         </div>
@@ -578,18 +611,20 @@ export function CellControlPanel({
               style={{
                 display: "flex",
                 flexDirection: "column",
-                gap: "8px",
-                borderTop: "1px solid var(--at-border-light)",
-                paddingTop: "12px",
+                gap: "10px",
+                border: "1px dashed var(--at-border)",
+                borderRadius: "var(--radius-sm)",
+                background: "var(--at-surface-2)",
+                padding: "12px",
                 marginTop: "4px",
               }}
             >
-              <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--at-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Hidden Items</span>
+              <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--at-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Hidden in Sheet</span>
 
               {hiddenCols.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  <span style={{ fontSize: "10px", color: "var(--at-text-soft)", fontWeight: 600 }}>Columns:</span>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <span style={{ fontSize: "10px", color: "var(--at-text-soft)", fontWeight: 600 }}>Columns (click to unhide):</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                     {hiddenCols.map((c) => (
                       <span
                         key={c.idx}
@@ -597,19 +632,30 @@ export function CellControlPanel({
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
-                          gap: "4px",
-                          padding: "2px 6px",
+                          gap: "6px",
+                          padding: "3px 8px",
                           borderRadius: "4px",
-                          background: "var(--at-surface-2)",
-                          border: "1px solid var(--at-border)",
-                          color: "var(--at-text-soft)",
+                          background: "var(--at-surface)",
+                          border: "1px solid var(--at-border-light)",
+                          color: "var(--at-text-muted)",
                           fontSize: "11px",
-                          fontWeight: 600,
+                          fontWeight: 500,
                           cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = "var(--clr-error)";
+                          e.currentTarget.style.color = "var(--clr-error)";
+                          e.currentTarget.style.background = "var(--clr-error-bg)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = "var(--at-border-light)";
+                          e.currentTarget.style.color = "var(--at-text-muted)";
+                          e.currentTarget.style.background = "var(--at-surface)";
                         }}
                         title="Click to unhide column"
                       >
-                        Col {getColLabel(c.idx)} <span style={{ color: "#ef4444", fontSize: "9px" }}>✕</span>
+                        Col {getColLabel(c.idx)} <span style={{ fontSize: "9px" }}>✕</span>
                       </span>
                     ))}
                   </div>
@@ -617,9 +663,9 @@ export function CellControlPanel({
               )}
 
               {hiddenRows.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "4px" }}>
-                  <span style={{ fontSize: "10px", color: "var(--at-text-soft)", fontWeight: 600 }}>Rows:</span>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+                  <span style={{ fontSize: "10px", color: "var(--at-text-soft)", fontWeight: 600 }}>Rows (click to unhide):</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                     {hiddenRows.map((r) => (
                       <span
                         key={r.idx}
@@ -627,19 +673,30 @@ export function CellControlPanel({
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
-                          gap: "4px",
-                          padding: "2px 6px",
+                          gap: "6px",
+                          padding: "3px 8px",
                           borderRadius: "4px",
-                          background: "var(--at-surface-2)",
-                          border: "1px solid var(--at-border)",
-                          color: "var(--at-text-soft)",
+                          background: "var(--at-surface)",
+                          border: "1px solid var(--at-border-light)",
+                          color: "var(--at-text-muted)",
                           fontSize: "11px",
-                          fontWeight: 600,
+                          fontWeight: 500,
                           cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = "var(--clr-error)";
+                          e.currentTarget.style.color = "var(--clr-error)";
+                          e.currentTarget.style.background = "var(--clr-error-bg)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = "var(--at-border-light)";
+                          e.currentTarget.style.color = "var(--at-text-muted)";
+                          e.currentTarget.style.background = "var(--at-surface)";
                         }}
                         title="Click to unhide row"
                       >
-                        Row {r.idx + 1} <span style={{ color: "#ef4444", fontSize: "9px" }}>✕</span>
+                        Row {r.idx + 1} <span style={{ fontSize: "9px" }}>✕</span>
                       </span>
                     ))}
                   </div>
@@ -653,195 +710,209 @@ export function CellControlPanel({
       {/* Accordion 3: Structure & Actions */}
       <CollapsibleSection title="Structure & Actions" defaultOpen={false}>
         {/* Text Operations */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--at-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Text Operations</span>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <span className="field-label" style={{ margin: 0 }}>Text Operations</span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
             <button
               onClick={() => transformText("upper")}
               className="tbl-ctrl-btn"
               style={{
-                padding: "6px 8px",
+                padding: "8px 10px",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "6px",
                 fontSize: "12px",
-                justifyContent: "center",
               }}
             >
-              <Type size={12} />
-              UPPER
+              <Type size={13} />
+              UPPERCASE
             </button>
             <button
               onClick={() => transformText("lower")}
               className="tbl-ctrl-btn"
               style={{
-                padding: "6px 8px",
+                padding: "8px 10px",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "6px",
                 fontSize: "12px",
-                justifyContent: "center",
               }}
             >
-              <Type size={12} />
-              lower
+              <Type size={13} />
+              lowercase
             </button>
             <button
               onClick={() => transformText("trim")}
               className="tbl-ctrl-btn"
               style={{
-                padding: "6px 8px",
+                padding: "8px 10px",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "6px",
                 fontSize: "12px",
-                justifyContent: "center",
               }}
             >
-              <Sparkles size={12} />
-              Trim
+              <Sparkles size={13} />
+              Trim Spaces
             </button>
             <button
               onClick={() => transformText("number")}
               className="tbl-ctrl-btn"
               style={{
-                padding: "6px 8px",
+                padding: "8px 10px",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "6px",
                 fontSize: "12px",
-                justifyContent: "center",
               }}
             >
-              <Binary size={12} />
-              Parse
+              <Binary size={13} />
+              Parse Number
             </button>
           </div>
         </div>
 
         {/* Grid Structure */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--at-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Grid Structure</span>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <span className="field-label" style={{ margin: 0 }}>Grid Insertion</span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
             <button
               onClick={() => addRow(false)}
               className="tbl-ctrl-btn"
               style={{
-                padding: "6px 8px",
+                padding: "8px 10px",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "6px",
                 fontSize: "12px",
-                justifyContent: "center",
               }}
             >
-              <PlusCircle size={12} />
+              <PlusCircle size={13} />
               Row Above
             </button>
             <button
               onClick={() => addRow(true)}
               className="tbl-ctrl-btn"
               style={{
-                padding: "6px 8px",
+                padding: "8px 10px",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "6px",
                 fontSize: "12px",
-                justifyContent: "center",
               }}
             >
-              <PlusCircle size={12} />
+              <PlusCircle size={13} />
               Row Below
             </button>
             <button
               onClick={() => addCol(false)}
               className="tbl-ctrl-btn"
               style={{
-                padding: "6px 8px",
+                padding: "8px 10px",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "6px",
                 fontSize: "12px",
-                justifyContent: "center",
               }}
             >
-              <PlusCircle size={12} />
-              Col Left
+              <PlusCircle size={13} />
+              Column Left
             </button>
             <button
               onClick={() => addCol(true)}
               className="tbl-ctrl-btn"
               style={{
-                padding: "6px 8px",
+                padding: "8px 10px",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "6px",
                 fontSize: "12px",
-                justifyContent: "center",
               }}
             >
-              <PlusCircle size={12} />
-              Col Right
+              <PlusCircle size={13} />
+              Column Right
             </button>
           </div>
         </div>
 
-        {/* Danger Zone */}
+        {/* Danger Zone Warning Card */}
         <div
           style={{
-            borderTop: "1px solid var(--at-border-light)",
-            paddingTop: "12px",
+            border: "1px solid #fca5a5",
+            borderRadius: "var(--radius-md)",
+            background: "#fff5f5",
+            padding: "14px",
             display: "flex",
             flexDirection: "column",
-            gap: "6px",
+            gap: "10px",
+            marginTop: "6px",
           }}
         >
-          <span style={{ fontSize: "11px", fontWeight: 600, color: "#b91c1c", textTransform: "uppercase", letterSpacing: "0.05em" }}>Danger Zone</span>
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "#b91c1c", textTransform: "uppercase", letterSpacing: "0.05em" }}>Danger Zone</span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+            <button
+              onClick={deleteRow}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "8px 10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+                fontSize: "12px",
+                color: "#b91c1c",
+                borderColor: "#fca5a5",
+                background: "#fff",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#fee2e2";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "#fff";
+              }}
+            >
+              <Trash2 size={13} />
+              Delete Row
+            </button>
+            <button
+              onClick={deleteCol}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "8px 10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+                fontSize: "12px",
+                color: "#b91c1c",
+                borderColor: "#fca5a5",
+                background: "#fff",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#fee2e2";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "#fff";
+              }}
+            >
+              <Trash2 size={13} />
+              Delete Col
+            </button>
+          </div>
           <button
-            onClick={deleteRow}
-            className="tbl-ctrl-btn"
+            onClick={() => setShowClearConfirm(true)}
             style={{
-              padding: "8px 12px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              fontSize: "12px",
-              justifyContent: "flex-start",
-              color: "#b91c1c",
-              width: "100%",
-            }}
-          >
-            <Trash2 size={13} />
-            Delete Row {row + 1}
-          </button>
-          <button
-            onClick={deleteCol}
-            className="tbl-ctrl-btn"
-            style={{
-              padding: "8px 12px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              fontSize: "12px",
-              justifyContent: "flex-start",
-              color: "#b91c1c",
-              width: "100%",
-            }}
-          >
-            <Trash2 size={13} />
-            Delete Column {getColLabel(col)}
-          </button>
-          <button
-            onClick={() => {
-              if (confirm("Are you sure you want to clear this cell's content and styling?")) {
-                clearCell();
-              }
-            }}
-            className="btn-secondary"
-            style={{
-              borderColor: "#fecaca",
-              background: "#fef2f2",
-              color: "#b91c1c",
+              border: "1px solid #fca5a5",
+              background: "#b91c1c",
+              color: "#fff",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -850,16 +921,124 @@ export function CellControlPanel({
               fontWeight: 600,
               padding: "8px 12px",
               width: "100%",
-              marginTop: "4px",
+              borderRadius: "5px",
+              cursor: "pointer",
+              transition: "background-color 0.15s ease",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#fee2e2")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "#fef2f2")}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#991b1b")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#b91c1c")}
           >
-            <RotateCcw size={12} />
-            Clear Content & Styles
+            <RotateCcw size={13} />
+            Clear Cell Value & Styles
           </button>
         </div>
       </CollapsibleSection>
+
+      {showClearConfirm && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(17, 24, 39, 0.4)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            animation: "fadeIn 0.2s ease-out",
+          }}
+          onClick={() => setShowClearConfirm(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "var(--at-surface)",
+              width: "380px",
+              maxWidth: "90%",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid var(--at-border)",
+              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              animation: "slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                padding: "16px 20px",
+                borderBottom: "1px solid var(--at-border-light)",
+                background: "#fff5f5",
+              }}
+            >
+              <RotateCcw size={16} color="#b91c1c" />
+              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#b91c1c", margin: 0 }}>
+                Clear Cell Value & Styles?
+              </h3>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: "20px", fontSize: "13px", color: "var(--at-text-muted)", lineHeight: 1.5 }}>
+              Are you sure you want to clear all cell contents and custom styling for cell <strong style={{ color: "var(--at-text)" }}>{cellRef}</strong>? This action cannot be undone.
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                padding: "12px 20px",
+                borderTop: "1px solid var(--at-border-light)",
+                background: "var(--at-surface-2)",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "8px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowClearConfirm(false)}
+                className="btn-secondary"
+                style={{
+                  padding: "6px 14px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  width: "auto",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearCell();
+                  setShowClearConfirm(false);
+                }}
+                style={{
+                  border: "none",
+                  background: "#b91c1c",
+                  color: "#fff",
+                  padding: "6px 14px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  borderRadius: "var(--radius-sm)",
+                  cursor: "pointer",
+                  transition: "background-color 0.15s ease",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#991b1b")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#b91c1c")}
+              >
+                Clear Cell
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
