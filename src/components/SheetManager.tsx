@@ -15,11 +15,15 @@ import {
   CheckCircle2,
   Lock,
   ChevronRight,
+  ChevronLeft,
   Eye,
   Share2,
   Plus,
   Table,
   Upload,
+  Download,
+  CloudUpload,
+  RefreshCw,
 } from "lucide-react";
 
 type Step = 1 | 2 | 3;
@@ -63,6 +67,7 @@ export function SheetManager() {
   const [sidebarMode, setSidebarMode] = useState<"step" | "cell">("step");
   const [importedFileName, setImportedFileName] = useState<string>("");
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const { toasts, dismiss, toast } = useToast();
   const {
@@ -81,6 +86,8 @@ export function SheetManager() {
     setActiveSheetIdx(0);
     setSelectedCell(null);
     setSidebarMode("step");
+    setIsSidebarCollapsed(false);
+    setIsSyncing(false);
   };
 
   const handleCellSelect = (cell: { row: number; col: number } | null) => {
@@ -88,6 +95,7 @@ export function SheetManager() {
     if (cell) {
       setSidebarMode("cell");
       setSidebarOpen(true);
+      setIsSidebarCollapsed(false);
     }
   };
 
@@ -134,9 +142,9 @@ export function SheetManager() {
       setCreatedSheet(sheet);
       setSheetName(name);
       setStep(2);
-      setImportedSheets(null); // transition to Google Sheets flow
       setSidebarMode("step");
       setSidebarOpen(false);
+      setIsSidebarCollapsed(false);
       toast(
         "success",
         "Synced successfully!",
@@ -160,18 +168,21 @@ export function SheetManager() {
     setSheetName(name);
     setStep(2);
     setSidebarOpen(false);
+    setIsSidebarCollapsed(false);
     setTimeout(() => setSidebarOpen(true), 120);
   };
 
   const handleTabsHidden = () => {
     setStep(3);
     setSidebarOpen(false);
+    setIsSidebarCollapsed(false);
     setTimeout(() => setSidebarOpen(true), 120);
   };
 
   const openSidebarForStep = (s: Step) => {
     setStep(s);
     setSidebarOpen(true);
+    setIsSidebarCollapsed(false);
   };
 
   const currentStepMeta = STEPS.find((s) => s.id === step)!;
@@ -279,29 +290,69 @@ export function SheetManager() {
                 edit in the sidebar.
               </p>
             </div>
-            <button
-              onClick={() => {
-                if (
-                  confirm(
-                    "Are you sure you want to close this local spreadsheet? Any unsaved edits will be lost.",
-                  )
-                ) {
-                  setImportedSheets(null);
-                  setImportedFileName("");
-                  setSelectedCell(null);
-                  setSidebarMode("step");
-                }
-              }}
-              className="tbl-ctrl-btn"
-              style={{
-                color: "#b91c1c",
-                borderColor: "#fca5a5",
-                fontSize: "12px",
-                padding: "5px 12px",
-              }}
-            >
-              Close Spreadsheet
-            </button>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button
+                onClick={handleExportExcel}
+                className="tbl-ctrl-btn"
+                style={{
+                  padding: "5px 12px",
+                  fontSize: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <Download size={13} />
+                Export Excel
+              </button>
+              <button
+                onClick={handleSyncToGoogle}
+                disabled={isSyncing}
+                className="btn-primary"
+                style={{
+                  padding: "5px 12px",
+                  width: "auto",
+                  fontSize: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  background: "var(--clr-success)",
+                  boxShadow: "none",
+                }}
+              >
+                {isSyncing ? (
+                  <RefreshCw size={13} className="spin" />
+                ) : (
+                  <CloudUpload size={13} />
+                )}
+                Sync to Google Sheets
+              </button>
+              <button
+                onClick={() => {
+                  const confirmMsg = createdSheet
+                    ? "Are you sure you want to close this spreadsheet? All wizard progress will be reset."
+                    : "Are you sure you want to close this local spreadsheet? Any unsaved edits will be lost.";
+                  if (confirm(confirmMsg)) {
+                    setImportedSheets(null);
+                    setImportedFileName("");
+                    setSelectedCell(null);
+                    setSidebarMode("step");
+                    setIsSyncing(false);
+                    setCreatedSheet(null);
+                    setStep(1);
+                  }
+                }}
+                className="tbl-ctrl-btn"
+                style={{
+                  color: "#b91c1c",
+                  borderColor: "#fca5a5",
+                  fontSize: "12px",
+                  padding: "5px 12px",
+                }}
+              >
+                Close Spreadsheet
+              </button>
+            </div>
           </div>
 
           <div style={{ flex: 1, minHeight: 0 }}>
@@ -697,21 +748,26 @@ export function SheetManager() {
           {/* Actions zone */}
           <div className="at-actions-zone">
             <button
-              className={`at-cta-btn${sidebarOpen ? " at-cta-btn--secondary" : ""}`}
+              className={`at-cta-btn${sidebarOpen && !isSidebarCollapsed ? " at-cta-btn--secondary" : ""}`}
               style={{ width: "auto", fontSize: 12, padding: "5px 12px" }}
               onClick={() => {
                 if (sidebarOpen) {
-                  setSidebarOpen(false);
-                  if (sidebarMode === "cell") {
-                    setSidebarMode("step");
-                    setSelectedCell(null);
+                  if (isSidebarCollapsed) {
+                    setIsSidebarCollapsed(false);
+                  } else {
+                    setSidebarOpen(false);
+                    if (sidebarMode === "cell") {
+                      setSidebarMode("step");
+                      setSelectedCell(null);
+                    }
                   }
                 } else {
                   setSidebarOpen(true);
+                  setIsSidebarCollapsed(false);
                 }
               }}
             >
-              {sidebarOpen
+              {sidebarOpen && !isSidebarCollapsed
                 ? "Close panel"
                 : sidebarMode === "cell"
                   ? "Cell Editor"
@@ -743,15 +799,56 @@ export function SheetManager() {
         )}
 
         {/* ── Body: Content + Sidebar ──────────────────────────────── */}
-        <div className="at-body">
+        <div className="at-body" style={{ position: "relative" }}>
           {/* Main content */}
           <main className="at-content">{mainContent()}</main>
 
+          {/* Floating collapse/uncollapse button */}
+          {sidebarOpen && (
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              style={{
+                position: "absolute",
+                right: isSidebarCollapsed ? "0px" : "360px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                zIndex: 100,
+                width: "20px",
+                height: "48px",
+                background: "var(--at-surface)",
+                border: "1px solid var(--at-border)",
+                borderRight: "none",
+                borderRadius: "6px 0 0 6px",
+                boxShadow: "-2px 0 6px rgba(0, 0, 0, 0.04)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "var(--at-text-soft)",
+                transition: "right 0.28s cubic-bezier(0.4, 0, 0.2, 1), background 0.15s, color 0.15s",
+                outline: "none",
+                padding: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--at-accent)";
+                e.currentTarget.style.background = "var(--at-surface-2)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--at-text-soft)";
+                e.currentTarget.style.background = "var(--at-surface)";
+              }}
+              title={isSidebarCollapsed ? "Expand panel" : "Collapse panel"}
+            >
+              {isSidebarCollapsed ? <ChevronLeft size={14} strokeWidth={2.5} /> : <ChevronRight size={14} strokeWidth={2.5} />}
+            </button>
+          )}
+
           {/* Right sidebar */}
           <RightSidebar
-            open={sidebarOpen}
+            open={sidebarOpen && !isSidebarCollapsed}
             onClose={() => {
               setSidebarOpen(false);
+              setIsSidebarCollapsed(false);
               if (sidebarMode === "cell") {
                 setSidebarMode("step");
                 setSelectedCell(null);

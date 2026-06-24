@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Bold,
   Italic,
@@ -17,7 +17,11 @@ import {
   Binary,
   Eye,
   EyeOff,
+  X,
+  Sliders,
 } from "lucide-react";
+import { Dropdown } from "@/components/ui/Dropdown";
+import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import {
   CellData,
   CellStyle,
@@ -218,8 +222,57 @@ export function CellControlPanel({
     onSheetsChange(updatedSheets);
   };
 
+  const deleteRow = () => {
+    const updatedSheets = [...sheets];
+    const sheet = { ...updatedSheets[activeSheetIdx] };
+    const sheetData = sheet.data.map((r) => r.map((c) => ({ ...c })));
+
+    if (sheetData.length <= 1) return;
+
+    sheetData.splice(row, 1);
+    sheet.data = sheetData;
+
+    const newRowsMeta = sheet.rows
+      ? [...sheet.rows]
+      : Array(sheetData.length + 1)
+          .fill(null)
+          .map(() => ({}));
+    newRowsMeta.splice(row, 1);
+    sheet.rows = newRowsMeta;
+
+    updatedSheets[activeSheetIdx] = sheet;
+    onSheetsChange(updatedSheets);
+    onCloseCellPanel();
+  };
+
+  const deleteCol = () => {
+    const updatedSheets = [...sheets];
+    const sheet = { ...updatedSheets[activeSheetIdx] };
+    const sheetData = sheet.data.map((r) => r.map((c) => ({ ...c })));
+
+    if (sheetData[0]?.length <= 1) return;
+
+    sheetData.forEach((r) => {
+      r.splice(col, 1);
+    });
+    sheet.data = sheetData;
+
+    const colCount = sheetData[0]?.length + 1;
+    const newColsMeta = sheet.cols
+      ? [...sheet.cols]
+      : Array(colCount)
+          .fill(null)
+          .map(() => ({}));
+    newColsMeta.splice(col, 1);
+    sheet.cols = newColsMeta;
+
+    updatedSheets[activeSheetIdx] = sheet;
+    onSheetsChange(updatedSheets);
+    onCloseCellPanel();
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       {/* Return to wizard tab */}
       <button
         onClick={onCloseCellPanel}
@@ -259,490 +312,285 @@ export function CellControlPanel({
             marginTop: "2px",
           }}
         >
-          Modify value, apply styles, or perform quick actions.
+          Modify cell data, styles, visibility, or structure.
         </p>
       </div>
 
-      {/* Edit Value */}
-      <div>
-        <label className="field-label" htmlFor="cell-value-textarea">
-          Cell Content
-        </label>
-        <textarea
-          id="cell-value-textarea"
-          value={cell.value}
-          onChange={handleValueChange}
-          placeholder="Empty cell..."
-          rows={3}
-          style={{
-            width: "100%",
-            padding: "8px 11px",
-            border: "1px solid var(--at-border)",
-            borderRadius: "var(--radius-sm)",
-            background: "var(--at-surface-2)",
-            fontFamily: "var(--font-body)",
-            fontSize: "13px",
-            color: "var(--at-text)",
-            resize: "vertical",
-            outline: "none",
-          }}
-          onFocus={(e) =>
-            (e.currentTarget.style.borderColor = "var(--at-accent)")
-          }
-          onBlur={(e) =>
-            (e.currentTarget.style.borderColor = "var(--at-border)")
-          }
-        />
-      </div>
-
-      {/* Text Styles & Alignments */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <span className="field-label">Typography & Align</span>
-        <div style={{ display: "flex", gap: "6px" }}>
-          <button
-            onClick={() => toggleStyle("bold")}
+      {/* Accordion 1: Formatting Settings */}
+      <CollapsibleSection title="Formatting Settings" defaultOpen={true}>
+        {/* Edit Value */}
+        <div>
+          <label className="field-label" htmlFor="cell-value-textarea">
+            Cell Content
+          </label>
+          <textarea
+            id="cell-value-textarea"
+            value={cell.value}
+            onChange={handleValueChange}
+            placeholder="Empty cell..."
+            rows={3}
             style={{
-              flex: 1,
-              height: "32px",
-              border: `1.5px solid ${style.bold ? "var(--at-accent)" : "var(--at-border)"}`,
-              background: style.bold
-                ? "var(--at-accent-light)"
-                : "var(--at-surface)",
-              color: style.bold ? "var(--at-accent)" : "var(--at-text-muted)",
-              borderRadius: "6px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              width: "100%",
+              padding: "8px 11px",
+              border: "1px solid var(--at-border)",
+              borderRadius: "var(--radius-sm)",
+              background: "var(--at-surface-2)",
+              fontFamily: "var(--font-body)",
+              fontSize: "13px",
+              color: "var(--at-text)",
+              resize: "vertical",
+              outline: "none",
             }}
-            title="Bold"
-          >
-            <Bold size={15} />
-          </button>
-          <button
-            onClick={() => toggleStyle("italic")}
-            style={{
-              flex: 1,
-              height: "32px",
-              border: `1.5px solid ${style.italic ? "var(--at-accent)" : "var(--at-border)"}`,
-              background: style.italic
-                ? "var(--at-accent-light)"
-                : "var(--at-surface)",
-              color: style.italic ? "var(--at-accent)" : "var(--at-text-muted)",
-              borderRadius: "6px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            title="Italic"
-          >
-            <Italic size={15} />
-          </button>
-          <button
-            onClick={() => toggleStyle("underline")}
-            style={{
-              flex: 1,
-              height: "32px",
-              border: `1.5px solid ${style.underline ? "var(--at-accent)" : "var(--at-border)"}`,
-              background: style.underline
-                ? "var(--at-accent-light)"
-                : "var(--at-surface)",
-              color: style.underline
-                ? "var(--at-accent)"
-                : "var(--at-text-muted)",
-              borderRadius: "6px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            title="Underline"
-          >
-            <Underline size={15} />
-          </button>
+            onFocus={(e) =>
+              (e.currentTarget.style.borderColor = "var(--at-accent)")
+            }
+            onBlur={(e) =>
+              (e.currentTarget.style.borderColor = "var(--at-border)")
+            }
+          />
         </div>
 
-        <div style={{ display: "flex", gap: "6px" }}>
-          <button
-            onClick={() => setAlign("left")}
-            style={{
-              flex: 1,
-              height: "32px",
-              border: `1.5px solid ${style.align === "left" || !style.align ? "var(--at-accent)" : "var(--at-border)"}`,
-              background:
-                style.align === "left" || !style.align
+        {/* Text Styles & Alignments */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <span className="field-label">Typography & Align</span>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button
+              onClick={() => toggleStyle("bold")}
+              style={{
+                flex: 1,
+                height: "32px",
+                border: `1.5px solid ${style.bold ? "var(--at-accent)" : "var(--at-border)"}`,
+                background: style.bold
                   ? "var(--at-accent-light)"
                   : "var(--at-surface)",
-              color:
-                style.align === "left" || !style.align
-                  ? "var(--at-accent)"
-                  : "var(--at-text-muted)",
-              borderRadius: "6px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            title="Align Left"
-          >
-            <AlignLeft size={15} />
-          </button>
-          <button
-            onClick={() => setAlign("center")}
-            style={{
-              flex: 1,
-              height: "32px",
-              border: `1.5px solid ${style.align === "center" ? "var(--at-accent)" : "var(--at-border)"}`,
-              background:
-                style.align === "center"
+                color: style.bold ? "var(--at-accent)" : "var(--at-text-muted)",
+                borderRadius: "6px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="Bold"
+            >
+              <Bold size={15} />
+            </button>
+            <button
+              onClick={() => toggleStyle("italic")}
+              style={{
+                flex: 1,
+                height: "32px",
+                border: `1.5px solid ${style.italic ? "var(--at-accent)" : "var(--at-border)"}`,
+                background: style.italic
                   ? "var(--at-accent-light)"
                   : "var(--at-surface)",
-              color:
-                style.align === "center"
-                  ? "var(--at-accent)"
-                  : "var(--at-text-muted)",
-              borderRadius: "6px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            title="Align Center"
-          >
-            <AlignCenter size={15} />
-          </button>
-          <button
-            onClick={() => setAlign("right")}
-            style={{
-              flex: 1,
-              height: "32px",
-              border: `1.5px solid ${style.align === "right" ? "var(--at-accent)" : "var(--at-border)"}`,
-              background:
-                style.align === "right"
+                color: style.italic ? "var(--at-accent)" : "var(--at-text-muted)",
+                borderRadius: "6px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="Italic"
+            >
+              <Italic size={15} />
+            </button>
+            <button
+              onClick={() => toggleStyle("underline")}
+              style={{
+                flex: 1,
+                height: "32px",
+                border: `1.5px solid ${style.underline ? "var(--at-accent)" : "var(--at-border)"}`,
+                background: style.underline
                   ? "var(--at-accent-light)"
                   : "var(--at-surface)",
-              color:
-                style.align === "right"
+                color: style.underline
                   ? "var(--at-accent)"
                   : "var(--at-text-muted)",
-              borderRadius: "6px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            title="Align Right"
-          >
-            <AlignRight size={15} />
-          </button>
-        </div>
-      </div>
+                borderRadius: "6px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="Underline"
+            >
+              <Underline size={15} />
+            </button>
+          </div>
 
-      {/* Colors */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <span className="field-label">Text Color</span>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "6px",
-          }}
-        >
-          {TEXT_COLORS.map((tc) => {
-            const isSelected = tc.value === (style.color || "");
-            return (
-              <button
-                key={tc.name}
-                onClick={() => setColor(tc.value)}
-                style={{
-                  height: "28px",
-                  fontSize: "11px",
-                  borderRadius: "4px",
-                  border: isSelected
-                    ? "1.5px solid var(--at-accent)"
-                    : "1px solid var(--at-border-light)",
-                  background: isSelected
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button
+              onClick={() => setAlign("left")}
+              style={{
+                flex: 1,
+                height: "32px",
+                border: `1.5px solid ${style.align === "left" || !style.align ? "var(--at-accent)" : "var(--at-border)"}`,
+                background:
+                  style.align === "left" || !style.align
                     ? "var(--at-accent-light)"
                     : "var(--at-surface)",
-                  color: tc.value || "var(--at-text-muted)",
-                  fontWeight: isSelected ? 600 : 400,
-                  cursor: "pointer",
-                }}
-              >
-                {tc.name}
-              </button>
-            );
-          })}
+                color:
+                  style.align === "left" || !style.align
+                    ? "var(--at-accent)"
+                    : "var(--at-text-muted)",
+                borderRadius: "6px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="Align Left"
+            >
+              <AlignLeft size={15} />
+            </button>
+            <button
+              onClick={() => setAlign("center")}
+              style={{
+                flex: 1,
+                height: "32px",
+                border: `1.5px solid ${style.align === "center" ? "var(--at-accent)" : "var(--at-border)"}`,
+                background:
+                  style.align === "center"
+                    ? "var(--at-accent-light)"
+                    : "var(--at-surface)",
+                color:
+                  style.align === "center"
+                    ? "var(--at-accent)"
+                    : "var(--at-text-muted)",
+                borderRadius: "6px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="Align Center"
+            >
+              <AlignCenter size={15} />
+            </button>
+            <button
+              onClick={() => setAlign("right")}
+              style={{
+                flex: 1,
+                height: "32px",
+                border: `1.5px solid ${style.align === "right" ? "var(--at-accent)" : "var(--at-border)"}`,
+                background:
+                  style.align === "right"
+                    ? "var(--at-accent-light)"
+                    : "var(--at-surface)",
+                color:
+                  style.align === "right"
+                    ? "var(--at-accent)"
+                    : "var(--at-text-muted)",
+                borderRadius: "6px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="Align Right"
+            >
+              <AlignRight size={15} />
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <span className="field-label">Background Fill</span>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "6px",
-          }}
-        >
-          {BG_COLORS.map((bgCol) => {
-            const isSelected = bgCol.value === (style.bg || "");
-            return (
-              <button
-                key={bgCol.name}
-                onClick={() => setBg(bgCol.value)}
-                style={{
-                  height: "28px",
-                  fontSize: "11px",
-                  borderRadius: "4px",
-                  border: isSelected
-                    ? "1.5px solid var(--at-accent)"
-                    : "1px solid var(--at-border-light)",
-                  background: bgCol.value || "var(--at-surface)",
-                  color: "var(--at-text-muted)",
-                  fontWeight: isSelected ? 600 : 400,
-                  cursor: "pointer",
-                }}
-              >
-                {bgCol.name}
-              </button>
-            );
-          })}
+        {/* Colors Dropdowns */}
+        <Dropdown
+          label="Text Color"
+          options={TEXT_COLORS.map(tc => ({
+            label: tc.name,
+            value: tc.value,
+            color: tc.value || undefined
+          }))}
+          selectedValue={style.color || ""}
+          onSelect={setColor}
+          placeholder="Default Text Color"
+        />
+
+        <Dropdown
+          label="Background Fill"
+          options={BG_COLORS.map(bgCol => ({
+            label: bgCol.name,
+            value: bgCol.value,
+            color: bgCol.value || undefined
+          }))}
+          selectedValue={style.bg || ""}
+          onSelect={setBg}
+          placeholder="Default Background Fill"
+        />
+      </CollapsibleSection>
+
+      {/* Accordion 2: Visibility Settings */}
+      <CollapsibleSection title="Visibility Settings" defaultOpen={false}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--at-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Hide Operations</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <button
+              onClick={() => toggleRowVisibility(row)}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "8px 12px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "12px",
+                justifyContent: "flex-start",
+                width: "100%",
+              }}
+              title={`Hide Row ${row + 1}`}
+            >
+              <EyeOff size={13} />
+              Hide Row {row + 1}
+            </button>
+            <button
+              onClick={() => toggleColVisibility(col)}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "8px 12px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "12px",
+                justifyContent: "flex-start",
+                width: "100%",
+              }}
+              title={`Hide Column ${getColLabel(col)}`}
+            >
+              <EyeOff size={13} />
+              Hide Column {getColLabel(col)}
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Value Transformations */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <span className="field-label">Text Operations</span>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "6px",
-          }}
-        >
-          <button
-            onClick={() => transformText("upper")}
-            className="tbl-ctrl-btn"
-            style={{
-              padding: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              fontSize: "11.5px",
-            }}
-          >
-            <Type size={12} />
-            UPPERCASE
-          </button>
-          <button
-            onClick={() => transformText("lower")}
-            className="tbl-ctrl-btn"
-            style={{
-              padding: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              fontSize: "11.5px",
-            }}
-          >
-            <Type size={12} />
-            lowercase
-          </button>
-          <button
-            onClick={() => transformText("trim")}
-            className="tbl-ctrl-btn"
-            style={{
-              padding: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              fontSize: "11.5px",
-            }}
-          >
-            <Sparkles size={12} />
-            Trim Spaces
-          </button>
-          <button
-            onClick={() => transformText("number")}
-            className="tbl-ctrl-btn"
-            style={{
-              padding: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              fontSize: "11.5px",
-            }}
-          >
-            <Binary size={12} />
-            Parse Number
-          </button>
-        </div>
-      </div>
+        {/* Hidden Items Checklist */}
+        {(() => {
+          const hiddenRows = (currentSheet?.rows || [])
+            .map((r, rIdx) => ({ hidden: !!r.hidden, idx: rIdx }))
+            .filter((r) => r.hidden);
+          const hiddenCols = (currentSheet?.cols || [])
+            .map((c, cIdx) => ({ hidden: !!c.hidden, idx: cIdx }))
+            .filter((c) => c.hidden);
 
-      {/* Grid Operations */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <span className="field-label">Structural Operations</span>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "6px",
-          }}
-        >
-          <button
-            onClick={() => addRow(false)}
-            className="tbl-ctrl-btn"
-            style={{
-              padding: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              fontSize: "11.5px",
-            }}
-          >
-            <PlusCircle size={12} />
-            Insert Row Above
-          </button>
-          <button
-            onClick={() => addRow(true)}
-            className="tbl-ctrl-btn"
-            style={{
-              padding: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              fontSize: "11.5px",
-            }}
-          >
-            <PlusCircle size={12} />
-            Insert Row Below
-          </button>
-          <button
-            onClick={() => addCol(false)}
-            className="tbl-ctrl-btn"
-            style={{
-              padding: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              fontSize: "11.5px",
-            }}
-          >
-            <PlusCircle size={12} />
-            Insert Col Left
-          </button>
-          <button
-            onClick={() => addCol(true)}
-            className="tbl-ctrl-btn"
-            style={{
-              padding: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              fontSize: "11.5px",
-            }}
-          >
-            <PlusCircle size={12} />
-            Insert Col Right
-          </button>
-        </div>
-      </div>
+          if (hiddenRows.length === 0 && hiddenCols.length === 0) return null;
 
-      {/* Visibility Operations */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <span className="field-label">Row & Column Visibility</span>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "6px",
-          }}
-        >
-          <button
-            onClick={() => toggleRowVisibility(row)}
-            className="tbl-ctrl-btn"
-            style={{
-              padding: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              fontSize: "11.5px",
-            }}
-            title={`Hide Row ${row + 1}`}
-          >
-            <EyeOff size={12} />
-            Hide Row {row + 1}
-          </button>
-          <button
-            onClick={() => toggleColVisibility(col)}
-            className="tbl-ctrl-btn"
-            style={{
-              padding: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "4px",
-              fontSize: "11.5px",
-            }}
-            title={`Hide Column ${getColLabel(col)}`}
-          >
-            <EyeOff size={12} />
-            Hide Col {getColLabel(col)}
-          </button>
-        </div>
-      </div>
+          return (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+                borderTop: "1px solid var(--at-border-light)",
+                paddingTop: "12px",
+                marginTop: "4px",
+              }}
+            >
+              <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--at-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Hidden Items</span>
 
-      {/* Hidden Items Checklist */}
-      {(() => {
-        const hiddenRows = (currentSheet?.rows || [])
-          .map((r, rIdx) => ({ hidden: !!r.hidden, idx: rIdx }))
-          .filter((r) => r.hidden);
-        const hiddenCols = (currentSheet?.cols || [])
-          .map((c, cIdx) => ({ hidden: !!c.hidden, idx: cIdx }))
-          .filter((c) => c.hidden);
-
-        if (hiddenRows.length === 0 && hiddenCols.length === 0) return null;
-
-        return (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "10px",
-              borderTop: "1px solid var(--at-border-light)",
-              paddingTop: "12px",
-            }}
-          >
-            <span className="field-label">Hidden Items</span>
-
-            {hiddenCols.length > 0 && (
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: "6px" }}
-              >
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--at-text-soft)",
-                    fontWeight: 600,
-                  }}
-                >
-                  Columns:
-                </span>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                  {hiddenCols.map((c) => {
-                    const label = getColLabel(c.idx);
-                    return (
+              {hiddenCols.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span style={{ fontSize: "10px", color: "var(--at-text-soft)", fontWeight: 600 }}>Columns:</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                    {hiddenCols.map((c) => (
                       <span
                         key={c.idx}
                         onClick={() => toggleColVisibility(c.idx)}
@@ -750,119 +598,268 @@ export function CellControlPanel({
                           display: "inline-flex",
                           alignItems: "center",
                           gap: "4px",
-                          padding: "3px 8px",
+                          padding: "2px 6px",
                           borderRadius: "4px",
-                          background: "#f4f4f2",
+                          background: "var(--at-surface-2)",
                           border: "1px solid var(--at-border)",
                           color: "var(--at-text-soft)",
-                          fontSize: "11.5px",
+                          fontSize: "11px",
                           fontWeight: 600,
                           cursor: "pointer",
                         }}
                         title="Click to unhide column"
                       >
-                        Col {label}{" "}
-                        <span
-                          style={{
-                            color: "#ef4444",
-                            fontSize: "10px",
-                            marginLeft: "2px",
-                          }}
-                        >
-                          ✕
-                        </span>
+                        Col {getColLabel(c.idx)} <span style={{ color: "#ef4444", fontSize: "9px" }}>✕</span>
                       </span>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {hiddenRows.length > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "6px",
-                  marginTop: hiddenCols.length > 0 ? "8px" : "0px",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--at-text-soft)",
-                    fontWeight: 600,
-                  }}
-                >
-                  Rows:
-                </span>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                  {hiddenRows.map((r) => (
-                    <span
-                      key={r.idx}
-                      onClick={() => toggleRowVisibility(r.idx)}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        padding: "3px 8px",
-                        borderRadius: "4px",
-                        background: "#f4f4f2",
-                        border: "1px solid var(--at-border)",
-                        color: "var(--at-text-soft)",
-                        fontSize: "11.5px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                      title="Click to unhide row"
-                    >
-                      Row {r.idx + 1}{" "}
+              {hiddenRows.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "4px" }}>
+                  <span style={{ fontSize: "10px", color: "var(--at-text-soft)", fontWeight: 600 }}>Rows:</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                    {hiddenRows.map((r) => (
                       <span
+                        key={r.idx}
+                        onClick={() => toggleRowVisibility(r.idx)}
                         style={{
-                          color: "#ef4444",
-                          fontSize: "10px",
-                          marginLeft: "2px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          background: "var(--at-surface-2)",
+                          border: "1px solid var(--at-border)",
+                          color: "var(--at-text-soft)",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          cursor: "pointer",
                         }}
+                        title="Click to unhide row"
                       >
-                        ✕
+                        Row {r.idx + 1} <span style={{ color: "#ef4444", fontSize: "9px" }}>✕</span>
                       </span>
-                    </span>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        );
-      })()}
+              )}
+            </div>
+          );
+        })()}
+      </CollapsibleSection>
 
-      {/* Clear cell */}
-      <div
-        style={{
-          borderTop: "1px solid var(--at-border-light)",
-          paddingTop: "12px",
-        }}
-      >
-        <button
-          onClick={clearCell}
-          className="btn-secondary"
+      {/* Accordion 3: Structure & Actions */}
+      <CollapsibleSection title="Structure & Actions" defaultOpen={false}>
+        {/* Text Operations */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--at-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Text Operations</span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+            <button
+              onClick={() => transformText("upper")}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "6px 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                justifyContent: "center",
+              }}
+            >
+              <Type size={12} />
+              UPPER
+            </button>
+            <button
+              onClick={() => transformText("lower")}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "6px 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                justifyContent: "center",
+              }}
+            >
+              <Type size={12} />
+              lower
+            </button>
+            <button
+              onClick={() => transformText("trim")}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "6px 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                justifyContent: "center",
+              }}
+            >
+              <Sparkles size={12} />
+              Trim
+            </button>
+            <button
+              onClick={() => transformText("number")}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "6px 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                justifyContent: "center",
+              }}
+            >
+              <Binary size={12} />
+              Parse
+            </button>
+          </div>
+        </div>
+
+        {/* Grid Structure */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--at-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Grid Structure</span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+            <button
+              onClick={() => addRow(false)}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "6px 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                justifyContent: "center",
+              }}
+            >
+              <PlusCircle size={12} />
+              Row Above
+            </button>
+            <button
+              onClick={() => addRow(true)}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "6px 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                justifyContent: "center",
+              }}
+            >
+              <PlusCircle size={12} />
+              Row Below
+            </button>
+            <button
+              onClick={() => addCol(false)}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "6px 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                justifyContent: "center",
+              }}
+            >
+              <PlusCircle size={12} />
+              Col Left
+            </button>
+            <button
+              onClick={() => addCol(true)}
+              className="tbl-ctrl-btn"
+              style={{
+                padding: "6px 8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                justifyContent: "center",
+              }}
+            >
+              <PlusCircle size={12} />
+              Col Right
+            </button>
+          </div>
+        </div>
+
+        {/* Danger Zone */}
+        <div
           style={{
-            borderColor: "#fecaca",
-            background: "#fef2f2",
-            color: "#b91c1c",
+            borderTop: "1px solid var(--at-border-light)",
+            paddingTop: "12px",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "5px",
-            fontSize: "12.5px",
-            fontWeight: 600,
+            flexDirection: "column",
+            gap: "6px",
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#fee2e2")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "#fef2f2")}
         >
-          <RotateCcw size={13} />
-          Clear Cell Content & Styles
-        </button>
-      </div>
+          <span style={{ fontSize: "11px", fontWeight: 600, color: "#b91c1c", textTransform: "uppercase", letterSpacing: "0.05em" }}>Danger Zone</span>
+          <button
+            onClick={deleteRow}
+            className="tbl-ctrl-btn"
+            style={{
+              padding: "8px 12px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontSize: "12px",
+              justifyContent: "flex-start",
+              color: "#b91c1c",
+              width: "100%",
+            }}
+          >
+            <Trash2 size={13} />
+            Delete Row {row + 1}
+          </button>
+          <button
+            onClick={deleteCol}
+            className="tbl-ctrl-btn"
+            style={{
+              padding: "8px 12px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontSize: "12px",
+              justifyContent: "flex-start",
+              color: "#b91c1c",
+              width: "100%",
+            }}
+          >
+            <Trash2 size={13} />
+            Delete Column {getColLabel(col)}
+          </button>
+          <button
+            onClick={() => {
+              if (confirm("Are you sure you want to clear this cell's content and styling?")) {
+                clearCell();
+              }
+            }}
+            className="btn-secondary"
+            style={{
+              borderColor: "#fecaca",
+              background: "#fef2f2",
+              color: "#b91c1c",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              fontSize: "12px",
+              fontWeight: 600,
+              padding: "8px 12px",
+              width: "100%",
+              marginTop: "4px",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#fee2e2")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "#fef2f2")}
+          >
+            <RotateCcw size={12} />
+            Clear Content & Styles
+          </button>
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }

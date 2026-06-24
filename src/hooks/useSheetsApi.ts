@@ -129,6 +129,10 @@ export function useSheetsApi() {
             }));
             resolve(token);
           },
+          error_callback: (err: { type: string; message?: string }) => {
+            setError(`Auth error: ${err.message || err.type}`);
+            reject(new Error(err.type || "OAuth error"));
+          },
         });
 
         tokenClientRef.current.requestAccessToken({ prompt: "consent" });
