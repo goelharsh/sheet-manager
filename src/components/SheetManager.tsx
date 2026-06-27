@@ -10,6 +10,7 @@ import { useSheetsApi, CreatedSheet } from "@/hooks/useSheetsApi";
 import { SpreadsheetGrid, ImportedSheet, getColLabel } from "@/components/SpreadsheetGrid";
 import { CellControlPanel } from "@/components/CellControlPanel";
 import { TriggersConsole, Trigger, LogEntry } from "@/components/TriggersConsole";
+import { CertificateMerge } from "@/components/steps/CertificateMerge";
 import * as XLSX from "xlsx";
 import {
   FileSpreadsheet,
@@ -25,9 +26,10 @@ import {
   Download,
   CloudUpload,
   RefreshCw,
+  Award,
 } from "lucide-react";
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
 
 const STEPS = [
   {
@@ -47,6 +49,12 @@ const STEPS = [
     label: "Share",
     icon: Share2,
     sidebarTitle: "Share Your Sheet",
+  },
+  {
+    id: 4 as Step,
+    label: "Certificates",
+    icon: Award,
+    sidebarTitle: "Certificate Merge",
   },
 ];
 
@@ -77,6 +85,11 @@ export function SheetManager() {
     createSheetFromImport,
     hideTabs,
     shareSheet,
+    copyTemplateDoc,
+    replaceDocPlaceholders,
+    makeFilePublic,
+    writeCellToSheet,
+    sendGmailMessage,
   } = useSheetsApi();
 
   // Triggers and DB States
@@ -473,7 +486,7 @@ export function SheetManager() {
     toast("success", "Synced", "Manual save triggered. All data pushed to database.");
   };
 
-  const reachedStep = createdSheet ? (step >= 3 ? 3 : step) : 1;
+  const reachedStep = createdSheet ? (step >= 4 ? 4 : step) : 1;
 
   const handleImportExcel = (sheets: ImportedSheet[], fileName: string) => {
     setImportedSheets(sheets);
@@ -629,6 +642,23 @@ export function SheetManager() {
           shareSheet={shareSheet}
           isLoading={isLoading}
           onToast={toast}
+        />
+      );
+    }
+    if (step === 4 && createdSheet) {
+      return (
+        <CertificateMerge
+          sheets={importedSheets || []}
+          activeSheetIdx={activeSheetIdx}
+          spreadsheetId={createdSheet.spreadsheetId}
+          isLoading={isLoading}
+          onToast={toast}
+          onSheetsChange={handleSheetsChange}
+          copyTemplateDoc={copyTemplateDoc}
+          replaceDocPlaceholders={replaceDocPlaceholders}
+          makeFilePublic={makeFilePublic}
+          writeCellToSheet={writeCellToSheet}
+          sendGmailMessage={sendGmailMessage}
         />
       );
     }

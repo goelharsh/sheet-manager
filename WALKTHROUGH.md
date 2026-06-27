@@ -86,3 +86,54 @@ You can test all these features directly in your browser:
 ### 4. Database Sync
 * Make some changes and reload the browser page.
 * You will observe that the grid structure, trigger configurations, and change log history are persisted and restored automatically from your Upstash database.
+
+---
+
+## 🎓 Certificate Generator & Mail Merge (Step 4)
+
+We implemented a client-side document copy, replacement, and email dispatch engine as a new wizard step.
+
+### 1. New Google OAuth Scopes
+To support the mail merge workflow, the application requests the following additional Google API scopes when the user clicks **Sign in with Google**:
+* `https://www.googleapis.com/auth/drive` — To copy templates and manage sharing settings.
+* `https://www.googleapis.com/auth/documents` — To edit the copied Google Docs via template replacements.
+* `https://www.googleapis.com/auth/gmail.send` — To send personalized emails from the user's Gmail account.
+
+### 2. Client-Side Google API Integration
+* **File:** [`src/hooks/useSheetsApi.ts`](file:///d:/shekhar-freelance/sheet-manager/src/hooks/useSheetsApi.ts)
+* **Methods:**
+  - `copyTemplateDoc(templateId, name)`: Uses Google Drive API (`POST /drive/v3/files/{templateId}/copy`) to clone a template document.
+  - `replaceDocPlaceholders(docId, replacements)`: Uses Google Docs API (`POST /v1/documents/{docId}:batchUpdate`) to find and replace placeholders like `{Name}`, `{Rank}`, and `{Class}`.
+  - `makeFilePublic(fileId)`: Uses Google Drive API (`POST /drive/v3/files/{fileId}/permissions`) to grant `anyone` `reader` access, then fetches the `webViewLink`.
+  - `writeCellToSheet(spreadsheetId, range, value)`: Writes the generated document URL back to the mapped spreadsheet cell.
+  - `sendGmailMessage(to, subject, body)`: Constructs an RFC 5322 MIME message, base64url-encodes it, and sends it via Gmail API (`POST /gmail/v1/users/me/messages/send`).
+
+### 3. Step 4 Wizard UI Panel
+* **File:** [`src/components/steps/CertificateMerge.tsx`](file:///d:/shekhar-freelance/sheet-manager/src/components/steps/CertificateMerge.tsx)
+* **Features:**
+  - **Inputs:** Google Doc template ID, Start Row, and End Row.
+  - **Column Mappers:** Direct mapping of placeholders (`{Name}`, `{Rank}`, `{Class}`), recipient email, and target cell column.
+  - **Email Subject & Body Editor:** Custom template support with dynamic variable rendering.
+  - **Loop Execution Dashboard:** Real-time log displaying progress (Copying doc, Replacing placeholders, Sharing in Drive, Writing to Sheet, Sending email) for each row with success/error status indicators.
+
+---
+
+## 🧪 How to Verify & Test (Step 4)
+
+1. **OAuth Sign-In:**
+   - In Step 1, click **Sign In with Google**. Grant all requested permissions (Drive, Documents, Gmail).
+2. **Setup Sheet Data:**
+   - Add columns for Name, Rank, Class, Email, and Link.
+   - Enter test values (e.g. `your-test-email@gmail.com`).
+3. **Setup Template:**
+   - Create a Google Doc with text like: `Hello {Name}, your rank is {Rank}.`
+   - Copy the document ID from the browser URL (the long string between `/d/` and `/edit`).
+4. **Run Merge:**
+   - Navigate to Step 4. Paste the template ID.
+   - Set the row range (e.g., Start: 2, End: 3) and map the columns.
+   - Click **Run Certificate Mail Merge**.
+   - Monitor the real-time execution log.
+5. **Check Results:**
+   - Verify the generated document link is written to the target column in the grid.
+   - Open your Google Sheet to verify the cell was updated remotely.
+   - Check the recipient email inbox to verify the personalized email was received.
