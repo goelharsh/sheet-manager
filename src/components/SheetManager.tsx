@@ -98,10 +98,10 @@ export function SheetManager() {
   const activeSheet = importedSheets?.[activeSheetIdx] ?? null;
   const filteredData = useFilteredData(activeSheet, filterRules, sortRules, searchTerm);
   const filteredRowIndices = useMemo((): number[] | undefined => {
-    const hasFilter = filterRules.length > 0 || searchTerm.trim() !== "";
-    if (!hasFilter) return undefined;
+    const hasFilterOrSort = filterRules.length > 0 || sortRules.length > 0 || searchTerm.trim() !== "";
+    if (!hasFilterOrSort) return undefined;
     return filteredData.rows.slice(1).map((r) => r.originalIdx);
-  }, [filteredData, filterRules.length, searchTerm]);
+  }, [filteredData, filterRules.length, sortRules.length, searchTerm]);
 
   const { toasts, dismiss, toast } = useToast();
   const {
