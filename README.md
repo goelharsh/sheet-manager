@@ -130,11 +130,14 @@ Below are step-by-step instructions on how to test each and every feature in the
 
 ---
 
-### 9. Outbound Webhooks
-* **Goal:** Send real-time POST payloads to external endpoints on sheet edits.
+### 9. Outbound Webhooks & Built-in Simulator
+* **Goal:** Send real-time POST payloads to external endpoints on sheet edits and visualize them natively.
 * **How to Test:**
   1. Expand the bottom console drawer and click the **Webhooks** tab.
-  2. Enter a webhook URL (e.g. from `https://webhook.site` or a local server) and toggle status to **Webhooks Enabled**. Click **Save Settings**.
-  3. Click **Send Test Webhook** and check your webhook receiver page. Verify a `test_connection` payload was delivered.
-  4. Edit any cell in the spreadsheet grid or add a row.
-  5. Look at your webhook receiver page. Verify a real-time `cell_changed` or `row_added` payload containing the diff (coordinates, old/new value) was successfully delivered.
+  2. Click the **Use Built-in Simulator** button. The app will automatically configure the local mock receiver endpoint (`http://localhost:3000/api/webhooks/mock-receiver`).
+  3. Toggle status to **Webhooks Enabled** and click **Save Settings**.
+  4. Click **Send Test Webhook**. You will see the event appear instantly in the **Simulated Deliveries Received** feed in the right-hand panel!
+  5. Click **Save & Sync** in the console footer.
+  6. Edit any cell in the spreadsheet grid or add a row.
+  7. Check the **Simulated Deliveries Received** feed. Verify that a real-time `cell_changed` or `row_added` payload containing the diff (coordinates, old/new value) was successfully captured and displayed.
+  8. *Optional:* Paste an external URL (e.g. from `https://webhook.site`) into the URL input and save to test external dispatches.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
+import * as XLSX from "xlsx";
 
 const SCRATCH_DIR = path.join(process.cwd(), "scratch");
 const DB_FILE = path.join(SCRATCH_DIR, "sheet_db.json");
@@ -48,69 +49,151 @@ async function loadDbState() {
   return null;
 }
 
+// CORS Headers for public endpoints
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, apiKey, _apiKey",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id: sheetIdParam } = await params;
-    const decodedId = decodeURIComponent(sheetIdParam);
+    const decodedId = decodeURIComponent(sheetIdParam).trim();
     const searchParams = req.nextUrl.searchParams;
 
-    // 1. Load Data
-    const dbState = await loadDbState();
-    if (!dbState || !dbState.sheets || !Array.isArray(dbState.sheets)) {
-      return NextResponse.json(
-        { error: "No sheets found in database." },
-        { status: 404 }
-      );
-    }
+    let rows: any[] = [];
 
-    // 2. Find Sheet (exact name match or slug match)
-    const sheet = dbState.sheets.find(
-      (s: any) =>
-        s.name.toLowerCase() === decodedId.toLowerCase() ||
-        slugify(s.name) === decodedId.toLowerCase()
-    );
+    // Check if the requested ID is a Google Spreadsheet ID
+    const isGoogleSheetId = /^[a-zA-Z0-9-_]{40,50}$/.test(decodedId);
 
-    if (!sheet) {
-      return NextResponse.json(
-        { error: `Sheet "${decodedId}" not found.` },
-        { status: 404 }
-      );
-    }
+    if (isGoogleSheetId) {
+      // Fetch live data from Google Sheets publicly
+      try {
+        const targetSheet = searchParams.get("_sheet") || searchParams.get("sheet") || "";
+        const targetGid = searchParams.get("_gid") || searchParams.get("gid") || "";
 
-    // 3. Authenticate & Verify Permissions
-    const apiSettings = sheet.apiSettings || { enabled: false, isPublic: true };
+        let csvUrl = `https://docs.google.com/spreadsheets/d/${decodedId}/export?format=csv`;
+        if (targetGid) {
+          csvUrl = `https://docs.google.com/spreadsheets/d/${decodedId}/export?format=csv&gid=${targetGid}`;
+        } else if (targetSheet) {
+          csvUrl = `https://docs.google.com/spreadsheets/d/${decodedId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(targetSheet)}`;
+        }
 
-    if (!apiSettings.enabled) {
-      return NextResponse.json(
-        { error: `API access is disabled for sheet "${sheet.name}". Enable it in the Sheet Manager console.` },
-        { status: 403 }
-      );
-    }
+        const response = await fetch(csvUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+        });
 
-    if (!apiSettings.isPublic) {
-      const authHeader = req.headers.get("Authorization");
-      let providedApiKey = "";
-      if (authHeader && authHeader.startsWith("Bearer ")) {
-        providedApiKey = authHeader.substring(7);
-      } else {
-        providedApiKey = searchParams.get("_apiKey") || searchParams.get("apiKey") || "";
-      }
+        if (!response.ok) {
+          return NextResponse.json(
+            {
+              error: `Failed to fetch Google Sheet. Verify that the spreadsheet ID is correct and sharing settings are set to "Anyone with the link can view".`,
+              details: `Google Sheets returned status ${response.status}`,
+            },
+            { status: response.status || 400, headers: corsHeaders }
+          );
+        }
 
-      if (!providedApiKey || providedApiKey !== apiSettings.apiKey) {
+        const csvText = await response.text();
+        const workbook = XLSX.read(csvText, { type: "string" });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        if (!worksheet) {
+          return NextResponse.json(
+            { error: "Google Sheet tab is empty or invalid." },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+
+        const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
+        if (!rawRows || rawRows.length === 0) {
+          return NextResponse.json([], { headers: corsHeaders });
+        }
+
+        // Convert raw rows to expected CellData[][] structure
+        rows = rawRows.map((row: any[]) =>
+          row.map((cell: any) => ({
+            value: cell !== null && cell !== undefined ? cell : ""
+          }))
+        );
+      } catch (fetchErr) {
         return NextResponse.json(
-          { error: "Unauthorized. Invalid or missing API key." },
-          { status: 401 }
+          {
+            error: "Failed to fetch or parse Google Sheet. Please check the ID and verify it is shared publicly.",
+            details: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+          },
+          { status: 500, headers: corsHeaders }
         );
       }
+    } else {
+      // 1. Load Local/Redis Database Data
+      const dbState = await loadDbState();
+      if (!dbState || !dbState.sheets || !Array.isArray(dbState.sheets)) {
+        return NextResponse.json(
+          { error: "No sheets found in database." },
+          { status: 404, headers: corsHeaders }
+        );
+      }
+
+      // 2. Find Sheet (exact name match or slug match)
+      const sheet = dbState.sheets.find(
+        (s: any) =>
+          s.name.toLowerCase() === decodedId.toLowerCase() ||
+          slugify(s.name) === decodedId.toLowerCase()
+      );
+
+      if (!sheet) {
+        return NextResponse.json(
+          { error: `Sheet "${decodedId}" not found.` },
+          { status: 404, headers: corsHeaders }
+        );
+      }
+
+      // 3. Authenticate & Verify Permissions
+      const apiSettings = sheet.apiSettings || { enabled: false, isPublic: true };
+
+      if (!apiSettings.enabled) {
+        return NextResponse.json(
+          { error: `API access is disabled for sheet "${sheet.name}". Enable it in the Sheet Manager console.` },
+          { status: 403, headers: corsHeaders }
+        );
+      }
+
+      if (!apiSettings.isPublic) {
+        const authHeader = req.headers.get("Authorization");
+        let providedApiKey = "";
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+          providedApiKey = authHeader.substring(7);
+        } else {
+          providedApiKey = searchParams.get("_apiKey") || searchParams.get("apiKey") || "";
+        }
+
+        if (!providedApiKey || providedApiKey !== apiSettings.apiKey) {
+          return NextResponse.json(
+            { error: "Unauthorized. Invalid or missing API key." },
+            { status: 401, headers: corsHeaders }
+          );
+        }
+      }
+
+      // 4. Set rows from local sheet data
+      rows = sheet.data;
     }
 
-    // 4. Convert CellData[][] to JSON objects
-    const rows = sheet.data;
     if (!rows || rows.length === 0) {
-      return NextResponse.json([]);
+      return NextResponse.json([], { headers: corsHeaders });
     }
 
     // Extract & Deduplicate Headers
@@ -215,11 +298,11 @@ export async function GET(
 
     records = records.slice(start, end);
 
-    return NextResponse.json(records);
+    return NextResponse.json(records, { headers: corsHeaders });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Internal Server Error" },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }

@@ -18,7 +18,7 @@ async function ensureScratchDir() {
 // In-memory fallback if file system fails or in production without env variables
 let inMemoryDb: unknown = null;
 
-async function loadData() {
+export async function loadData() {
   // 1. Try Upstash Redis / Vercel KV if config exists
   const kvUrl = process.env.KV_REST_API_URL; 
   const kvToken = process.env.KV_REST_API_TOKEN;
@@ -53,7 +53,7 @@ async function loadData() {
   return inMemoryDb;
 }
 
-async function saveData(state: unknown) {
+export async function saveData(state: unknown) {
   // Load existing data to perform a shallow merge and prevent wiping other fields
   let mergedState = state;
   if (state && typeof state === "object" && !Array.isArray(state)) {

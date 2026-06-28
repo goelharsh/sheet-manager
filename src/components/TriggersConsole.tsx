@@ -129,12 +129,26 @@ export function TriggersConsole({
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null);
   const [activeSnippetTab, setActiveSnippetTab] = useState<"curl" | "js" | "python">("curl");
   const [origin, setOrigin] = useState("http://localhost:3050");
+  const [copiedShareCmd, setCopiedShareCmd] = useState(false);
+  const [copiedNgrokCmd, setCopiedNgrokCmd] = useState(false);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       setOrigin(window.location.origin);
     }
   }, []);
+
+  const handleCopyShareCmd = () => {
+    navigator.clipboard.writeText("npm run share");
+    setCopiedShareCmd(true);
+    setTimeout(() => setCopiedShareCmd(false), 2000);
+  };
+
+  const handleCopyNgrokCmd = () => {
+    navigator.clipboard.writeText("npx ngrok http 3000");
+    setCopiedNgrokCmd(true);
+    setTimeout(() => setCopiedNgrokCmd(false), 2000);
+  };
 
   const apiSettings = currentSheet?.apiSettings || {
     enabled: false,
@@ -189,6 +203,7 @@ export function TriggersConsole({
   };
 
   const currentSheetName = currentSheet?.name || "sheet";
+  const isLocalOrigin = origin.includes("localhost") || origin.includes("127.0.0.1") || origin.includes("192.168.") || origin.includes("10.");
   const endpointUrl = `${origin}/api/sheets/${encodeURIComponent(currentSheetName)}`;
   const apiKeyToUse = apiSettings.apiKey || "YOUR_API_KEY";
   const authHeaderValue = `Bearer ${apiKeyToUse}`;
@@ -361,6 +376,62 @@ else:
     } finally {
       setIsTestingWebhook(false);
     }
+  };
+
+  const [simulatedWebhooks, setSimulatedWebhooks] = useState<any[]>([]);
+  const [isClearingSimulation, setIsClearingSimulation] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState<"simulator" | "docs">("simulator");
+
+  // Poll mock webhooks when the webhook tab is open
+  React.useEffect(() => {
+    if (activeTab !== "webhook") return;
+
+    let active = true;
+
+    const fetchSimulated = async () => {
+      try {
+        const res = await fetch("/api/webhooks/mock-receiver");
+        if (res.ok && active) {
+          const data = await res.json();
+          setSimulatedWebhooks(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch simulated webhooks", err);
+      }
+    };
+
+    fetchSimulated();
+    const interval = setInterval(fetchSimulated, 2000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [activeTab]);
+
+  const handleClearSimulation = async () => {
+    setIsClearingSimulation(true);
+    try {
+      const res = await fetch("/api/webhooks/mock-receiver", { method: "DELETE" });
+      if (res.ok) {
+        setSimulatedWebhooks([]);
+      }
+    } catch (err) {
+      console.error("Failed to clear simulated webhooks", err);
+    } finally {
+      setIsClearingSimulation(false);
+    }
+  };
+
+  const handleUseSimulatorUrl = () => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+    const simUrl = `${origin}/api/webhooks/mock-receiver`;
+    setWebhookUrlInput(simUrl);
+    
+    onUpdateSheetWebhookSettings(activeSheetIdx, {
+      ...webhookSettings,
+      url: simUrl,
+    });
   };
 
   // Sample webhook payloads for documentation
@@ -624,8 +695,17 @@ else:
                   
                   {/* Row 1: Enable & Security Mode */}
                   <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-800/20 p-3 rounded-lg border border-slate-700/30">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-slate-300 font-semibold text-sm">REST API Integration</span>
+                      {isLocalOrigin ? (
+                        <span className="flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] font-semibold shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Local Host
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-semibold shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Public Tunnel Active
+                        </span>
+                      )}
                       <button
                         onClick={handleToggleApi}
                         className={`px-3 py-1.5 rounded font-semibold text-[11px] transition-colors flex items-center gap-1.5 ${
@@ -791,6 +871,47 @@ else:
                           </button>
                         </div>
                       </div>
+
+                      {/* Expose Local API Publicly */}
+                      {isLocalOrigin && (
+                        <div className="flex flex-col gap-2 bg-slate-800/40 p-3 rounded-lg border border-slate-700/50 mt-1">
+                          <div className="flex items-center gap-1.5">
+                            <Globe size={13} className="text-amber-400" />
+                            <span className="text-slate-300 font-semibold">Expose Local API Publicly</span>
+                            <span className="ml-auto text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">Setup Guide</span>
+                          </div>
+                          <p className="text-slate-400 text-[10px] leading-relaxed">
+                            Currently, your API is only accessible on this machine. To share it with clients or external services (e.g. for external testing or live webhooks), run a public tunnel.
+                          </p>
+                          <div className="flex flex-col gap-1.5 bg-slate-950/60 p-2.5 rounded border border-slate-850 mt-1">
+                            <span className="text-slate-400 text-[9px] uppercase font-bold tracking-wider">Option 1: Quick Tunnel (No Signup Required)</span>
+                            <div className="flex items-center justify-between gap-2 font-mono text-[9px] bg-slate-900 px-2 py-1.5 rounded text-slate-300 border border-slate-800">
+                              <span>npm run share</span>
+                              <button
+                                onClick={handleCopyShareCmd}
+                                className="text-sky-400 hover:text-sky-300 font-semibold cursor-pointer flex items-center gap-1"
+                              >
+                                {copiedShareCmd ? <CheckCircle2 size={10} className="text-emerald-400" /> : null}
+                                {copiedShareCmd ? "Copied" : "Copy Command"}
+                              </button>
+                            </div>
+                            <span className="text-slate-400 text-[9px] uppercase font-bold tracking-wider mt-1">Option 2: Using ngrok</span>
+                            <div className="flex items-center justify-between gap-2 font-mono text-[9px] bg-slate-900 px-2 py-1.5 rounded text-slate-300 border border-slate-800">
+                              <span>npx ngrok http 3000</span>
+                              <button
+                                onClick={handleCopyNgrokCmd}
+                                className="text-sky-400 hover:text-sky-300 font-semibold cursor-pointer flex items-center gap-1"
+                              >
+                                {copiedNgrokCmd ? <CheckCircle2 size={10} className="text-emerald-400" /> : null}
+                                {copiedNgrokCmd ? "Copied" : "Copy Command"}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="text-[9px] text-slate-500 italic mt-0.5 leading-snug">
+                            💡 <strong>Tip:</strong> Once the tunnel is running, open the app via the tunnel's public URL. The dashboard will automatically update all copyable endpoint URLs to target the public host!
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -852,19 +973,28 @@ else:
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-slate-400 font-medium">Target Webhook URL</label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-slate-400 font-medium">Target Webhook URL</label>
+                        <button
+                          type="button"
+                          onClick={handleUseSimulatorUrl}
+                          className="text-sky-400 hover:text-sky-300 font-semibold text-[10px] flex items-center gap-1 cursor-pointer bg-sky-950/40 border border-sky-850 px-2 py-0.5 rounded transition-colors"
+                        >
+                          <Activity size={10} /> Use Built-in Simulator
+                        </button>
+                      </div>
                       <div className="flex gap-2">
                         <input
                           type="url"
                           placeholder="e.g. https://your-server.com/webhook"
                           value={webhookUrlInput}
                           onChange={(e) => setWebhookUrlInput(e.target.value)}
-                          className="flex-1 bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-300 outline-none"
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-300 outline-none font-mono"
                           required={webhookSettings.enabled}
                         />
                         <button
                           type="submit"
-                          className="bg-sky-600 hover:bg-sky-500 text-white px-4 rounded text-xs font-semibold cursor-pointer"
+                          className="bg-sky-600 hover:bg-sky-500 text-white px-4 rounded text-xs font-semibold cursor-pointer transition-colors"
                         >
                           Save Settings
                         </button>
@@ -884,7 +1014,7 @@ else:
                           type="button"
                           onClick={handleSendTestWebhook}
                           disabled={isTestingWebhook || !webhookUrlInput}
-                          className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                         >
                           {isTestingWebhook ? (
                             <RefreshCw size={12} className="spin" />
@@ -934,26 +1064,92 @@ else:
 
                 </div>
 
-                {/* Right Column: Webhook Payloads Documentation */}
+                {/* Right Column: Webhook Simulator Feed & Payloads Documentation */}
                 <div className="flex-[2] border-l border-slate-800 pl-4 flex flex-col min-h-0">
-                  <div className="flex items-center justify-between border-b border-slate-700 pb-1.5 shrink-0 mb-2">
-                    <span className="text-slate-400 font-semibold">Payload Documentation</span>
+                  <div className="flex items-center justify-between border-b border-slate-700 pb-1.5 shrink-0 mb-3">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setRightPanelTab("simulator")}
+                        className={`text-xs font-semibold px-2.5 py-1 rounded transition-colors cursor-pointer ${
+                          rightPanelTab === "simulator" ? "bg-slate-800 text-sky-400 border border-slate-700" : "text-slate-500 hover:text-slate-350"
+                        }`}
+                      >
+                        Simulated Deliveries ({simulatedWebhooks.length})
+                      </button>
+                      <button
+                        onClick={() => setRightPanelTab("docs")}
+                        className={`text-xs font-semibold px-2.5 py-1 rounded transition-colors cursor-pointer ${
+                          rightPanelTab === "docs" ? "bg-slate-800 text-sky-400 border border-slate-700" : "text-slate-500 hover:text-slate-350"
+                        }`}
+                      >
+                        Payload Docs
+                      </button>
+                    </div>
+                    {rightPanelTab === "simulator" && simulatedWebhooks.length > 0 && (
+                      <button
+                        onClick={handleClearSimulation}
+                        disabled={isClearingSimulation}
+                        className="text-[10px] text-rose-400 hover:text-rose-350 bg-rose-950/20 border border-rose-900/40 px-2 py-0.5 rounded cursor-pointer transition-colors"
+                      >
+                        Clear Feed
+                      </button>
+                    )}
                   </div>
+
                   <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark flex flex-col gap-4">
                     
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-slate-300 font-semibold">Event: cell_changed</span>
-                      <pre className="bg-slate-950/80 rounded border border-slate-800 p-2 font-mono text-[9px] text-emerald-400/90 overflow-x-auto whitespace-pre text-left">
-                        {cellChangedSample}
-                      </pre>
-                    </div>
+                    {rightPanelTab === "simulator" ? (
+                      <div className="flex flex-col gap-3">
+                        {simulatedWebhooks.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center text-center p-6 bg-slate-850/20 rounded border border-slate-800 text-slate-500">
+                            <Activity size={24} className="text-slate-650 mb-1.5 animate-pulse" />
+                            <span className="font-semibold text-slate-400 text-xs">No Simulated Events Captured</span>
+                            <p className="text-[10px] text-slate-500 max-w-xs mt-1">
+                              Use the Built-in Simulator URL, enable webhooks, and trigger a change (like editing a cell) to watch live events capture here!
+                            </p>
+                          </div>
+                        ) : (
+                          simulatedWebhooks.map((item) => (
+                            <div key={item.id} className="bg-slate-900/60 border border-slate-800 p-2.5 rounded flex flex-col gap-2">
+                              <div className="flex items-center justify-between shrink-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`px-1.5 py-0.5 rounded-[3px] text-[9px] font-bold ${
+                                    item.payload?.event === "test_connection"
+                                      ? "bg-slate-700/50 text-slate-300 border border-slate-600/30"
+                                      : item.payload?.event === "row_added"
+                                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                        : "bg-sky-500/10 text-sky-400 border border-sky-500/20"
+                                  }`}>
+                                    {item.payload?.event || "event"}
+                                  </span>
+                                  <span className="text-[10px] font-semibold text-slate-400">{item.payload?.sheetName || "Sheet"}</span>
+                                </div>
+                                <span className="text-[9px] text-slate-500 font-mono font-medium">{item.receivedAt}</span>
+                              </div>
+                              <pre className="bg-slate-950/60 p-2 rounded text-[9px] font-mono text-emerald-450 border border-slate-950 overflow-x-auto text-left select-all whitespace-pre">
+                                {JSON.stringify(item.payload?.data, null, 2)}
+                              </pre>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-slate-300 font-semibold">Event: cell_changed</span>
+                          <pre className="bg-slate-950/80 rounded border border-slate-800 p-2 font-mono text-[9px] text-emerald-400/90 overflow-x-auto whitespace-pre text-left">
+                            {cellChangedSample}
+                          </pre>
+                        </div>
 
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-slate-300 font-semibold">Event: row_added</span>
-                      <pre className="bg-slate-950/80 rounded border border-slate-800 p-2 font-mono text-[9px] text-emerald-400/90 overflow-x-auto whitespace-pre text-left">
-                        {rowAddedSample}
-                      </pre>
-                    </div>
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-slate-300 font-semibold">Event: row_added</span>
+                          <pre className="bg-slate-950/80 rounded border border-slate-800 p-2 font-mono text-[9px] text-emerald-400/90 overflow-x-auto whitespace-pre text-left">
+                            {rowAddedSample}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
 
                   </div>
                 </div>
