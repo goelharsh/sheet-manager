@@ -17,6 +17,7 @@ import { KanbanView } from "@/components/views/KanbanView";
 import { GalleryView } from "@/components/views/GalleryView";
 import { ListView } from "@/components/views/ListView";
 import { CalendarView } from "@/components/views/CalendarView";
+import { PrintView } from "@/components/views/PrintView";
 import * as XLSX from "xlsx";
 import {
   FileSpreadsheet,
@@ -728,6 +729,14 @@ export function SheetManager() {
               filteredData={filteredData}
               dateColIndex={calendarDateCol}
               onDateColChange={setCalendarDateCol}
+            />
+          );
+        }
+        if (viewType === "print") {
+          return (
+            <PrintView
+              activeSheet={activeSheet}
+              filteredRowIndices={filteredRowIndices}
             />
           );
         }

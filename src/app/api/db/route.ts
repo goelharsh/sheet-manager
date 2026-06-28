@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
   }
 
   const data = await loadData();
-  return NextResponse.json(data || { sheets: [], triggers: [], logs: [] });
+  return NextResponse.json(data || { sheets: [], triggers: [], logs: [], printTemplates: [] });
 }
 
 export async function POST(req: NextRequest) {
