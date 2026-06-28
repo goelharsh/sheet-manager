@@ -17,8 +17,10 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  MousePointerClick,
 } from "lucide-react";
 import { getColLabel, ImportedSheet } from "./SpreadsheetGrid";
+import { ClickAnalyticsPanel } from "@/components/ClickAnalyticsPanel";
 
 export interface Trigger {
   id: string;
@@ -74,21 +76,27 @@ export function TriggersConsole({
   onSyncDb,
 }: TriggersConsoleProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"logs" | "triggers">("logs");
-  
+  const [activeTab, setActiveTab] = useState<"logs" | "triggers" | "analytics">(
+    "logs",
+  );
+
   // Filtering & Search
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
 
   // New Trigger Form State
   const [triggerName, setTriggerName] = useState("");
-  const [eventType, setEventType] = useState<"row_added" | "cell_changed">("cell_changed");
+  const [eventType, setEventType] = useState<"row_added" | "cell_changed">(
+    "cell_changed",
+  );
   const [sheetName, setSheetName] = useState("All");
   const [targetColumn, setTargetColumn] = useState<number>(-1); // -1 is Any Column
-  const [actionType, setActionType] = useState<"auto_fill" | "log_only">("log_only");
+  const [actionType, setActionType] = useState<"auto_fill" | "log_only">(
+    "log_only",
+  );
   const [actionColumn, setActionColumn] = useState<number>(0);
   const [actionValue, setActionValue] = useState("");
-  
+
   const currentSheet = sheets[activeSheetIdx];
   const colCount = currentSheet?.data[0]?.length || 4;
 
@@ -113,14 +121,17 @@ export function TriggersConsole({
   };
 
   const filteredLogs = logs.filter((log) => {
-    const matchesSearch = log.details.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          log.sheetName.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch =
+      log.details.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      log.sheetName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filterType === "all" || log.eventType === filterType;
     return matchesSearch && matchesFilter;
   });
 
   return (
-    <div className={`tg-console ${isOpen ? "tg-console--open" : "tg-console--closed"}`}>
+    <div
+      className={`tg-console ${isOpen ? "tg-console--open" : "tg-console--closed"}`}
+    >
       {/* Console Header */}
       <div className="tg-header" onClick={() => setIsOpen(!isOpen)}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -131,27 +142,55 @@ export function TriggersConsole({
           <span className="tg-badge">{triggers.length} Active Triggers</span>
           <span className={`tg-db-indicator tg-db-indicator--${dbProvider}`}>
             <Database size={12} />
-            {dbProvider === "upstash_redis" ? "Upstash Redis" : dbProvider === "vercel_postgres" ? "Vercel Postgres" : "Local JSON File"}
+            {dbProvider === "upstash_redis"
+              ? "Upstash Redis"
+              : dbProvider === "vercel_postgres"
+                ? "Vercel Postgres"
+                : "Local JSON File"}
           </span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }} onClick={(e) => e.stopPropagation()}>
-          <button 
+        <div
+          style={{ display: "flex", alignItems: "center", gap: "12px" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
             className={`tg-tab-btn ${activeTab === "logs" ? "tg-tab-btn--active" : ""}`}
-            onClick={() => { setIsOpen(true); setActiveTab("logs"); }}
+            onClick={() => {
+              setIsOpen(true);
+              setActiveTab("logs");
+            }}
           >
             Change Log ({filteredLogs.length})
           </button>
-          <button 
+          <button
             className={`tg-tab-btn ${activeTab === "triggers" ? "tg-tab-btn--active" : ""}`}
-            onClick={() => { setIsOpen(true); setActiveTab("triggers"); }}
+            onClick={() => {
+              setIsOpen(true);
+              setActiveTab("triggers");
+            }}
           >
             Triggers Manager ({triggers.length})
           </button>
-          
+          <button
+            className={`tg-tab-btn ${activeTab === "analytics" ? "tg-tab-btn--active" : ""}`}
+            onClick={() => {
+              setIsOpen(true);
+              setActiveTab("analytics");
+            }}
+            style={{ display: "flex", alignItems: "center", gap: 5 }}
+          >
+            <MousePointerClick size={12} />
+            Link Analytics
+          </button>
+
           <div className="tg-header-divider" />
-          
-          <button className="tg-icon-btn" onClick={() => setIsOpen(!isOpen)} title={isOpen ? "Collapse console" : "Expand console"}>
+
+          <button
+            className="tg-icon-btn"
+            onClick={() => setIsOpen(!isOpen)}
+            title={isOpen ? "Collapse console" : "Expand console"}
+          >
             {isOpen ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
           </button>
         </div>
@@ -168,8 +207,8 @@ export function TriggersConsole({
                 <div style={{ display: "flex", gap: "8px", flex: 1 }}>
                   <div className="tg-input-search">
                     <Search size={13} className="tg-search-icon" />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="Search change logs..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -177,7 +216,10 @@ export function TriggersConsole({
                   </div>
                   <div className="tg-select-wrapper">
                     <Filter size={13} className="tg-filter-icon" />
-                    <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+                    <select
+                      value={filterType}
+                      onChange={(e) => setFilterType(e.target.value)}
+                    >
                       <option value="all">All Events</option>
                       <option value="cell_changed">Cell Changes</option>
                       <option value="row_added">Row Additions</option>
@@ -186,7 +228,11 @@ export function TriggersConsole({
                     </select>
                   </div>
                 </div>
-                <button className="tg-btn tg-btn--danger" onClick={onClearLogs} disabled={logs.length === 0}>
+                <button
+                  className="tg-btn tg-btn--danger"
+                  onClick={onClearLogs}
+                  disabled={logs.length === 0}
+                >
                   <Trash2 size={13} />
                   Clear Logs
                 </button>
@@ -197,7 +243,10 @@ export function TriggersConsole({
                 {filteredLogs.length === 0 ? (
                   <div className="tg-empty-state">
                     <Terminal size={24} style={{ opacity: 0.3 }} />
-                    <p>No change logs found. Edit cells or configure triggers to see them in action.</p>
+                    <p>
+                      No change logs found. Edit cells or configure triggers to
+                      see them in action.
+                    </p>
                   </div>
                 ) : (
                   <table className="tg-table">
@@ -212,22 +261,37 @@ export function TriggersConsole({
                     </thead>
                     <tbody>
                       {filteredLogs.map((log) => (
-                        <tr key={log.id} className={`tg-row tg-row--${log.status}`}>
+                        <tr
+                          key={log.id}
+                          className={`tg-row tg-row--${log.status}`}
+                        >
                           <td className="tg-td-time">{log.timestamp}</td>
                           <td>
-                            <span className={`tg-event-badge tg-event-badge--${log.eventType}`}>
+                            <span
+                              className={`tg-event-badge tg-event-badge--${log.eventType}`}
+                            >
                               {log.eventType.replace("_", " ")}
                             </span>
                           </td>
                           <td className="tg-td-sheet">{log.sheetName}</td>
                           <td className="tg-td-details">
-                            {log.triggerName && <strong style={{ color: "#38bdf8" }}>[{log.triggerName}] </strong>}
+                            {log.triggerName && (
+                              <strong style={{ color: "#38bdf8" }}>
+                                [{log.triggerName}]{" "}
+                              </strong>
+                            )}
                             {log.details}
                           </td>
                           <td>
-                            <span className={`tg-status-indicator tg-status-indicator--${log.status}`}>
-                              {log.status === "success" && <CheckCircle2 size={11} />}
-                              {log.status === "warning" && <AlertTriangle size={11} />}
+                            <span
+                              className={`tg-status-indicator tg-status-indicator--${log.status}`}
+                            >
+                              {log.status === "success" && (
+                                <CheckCircle2 size={11} />
+                              )}
+                              {log.status === "warning" && (
+                                <AlertTriangle size={11} />
+                              )}
                               {log.status === "info" && <Info size={11} />}
                               {log.status}
                             </span>
@@ -239,6 +303,10 @@ export function TriggersConsole({
                 )}
               </div>
             </div>
+          ) : activeTab === "analytics" ? (
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+              <ClickAnalyticsPanel />
+            </div>
           ) : (
             <div className="tg-tab-content tg-grid-2">
               {/* Left Column: Triggers List */}
@@ -248,25 +316,48 @@ export function TriggersConsole({
                   {triggers.length === 0 ? (
                     <div className="tg-empty-state">
                       <Settings size={20} style={{ opacity: 0.3 }} />
-                      <p>No triggers configured yet. Create one on the right.</p>
+                      <p>
+                        No triggers configured yet. Create one on the right.
+                      </p>
                     </div>
                   ) : (
                     triggers.map((trigger) => (
-                      <div key={trigger.id} className={`tg-item ${!trigger.isActive ? "tg-item--inactive" : ""}`}>
+                      <div
+                        key={trigger.id}
+                        className={`tg-item ${!trigger.isActive ? "tg-item--inactive" : ""}`}
+                      >
                         <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <strong style={{ color: "#f8fafc", fontSize: "13px" }}>{trigger.name}</strong>
-                            <span className={`tg-event-badge tg-event-badge--${trigger.type}`}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <strong
+                              style={{ color: "#f8fafc", fontSize: "13px" }}
+                            >
+                              {trigger.name}
+                            </strong>
+                            <span
+                              className={`tg-event-badge tg-event-badge--${trigger.type}`}
+                            >
                               {trigger.type.replace("_", " ")}
                             </span>
                           </div>
                           <p className="tg-item-desc">
-                            Scope: <span style={{ color: "#38bdf8" }}>{trigger.sheetName}</span>
+                            Scope:{" "}
+                            <span style={{ color: "#38bdf8" }}>
+                              {trigger.sheetName}
+                            </span>
                             {trigger.type === "cell_changed" && (
                               <>
-                                {" "}· Target Col:{" "}
+                                {" "}
+                                · Target Col:{" "}
                                 <span style={{ color: "#f59e0b" }}>
-                                  {trigger.targetColumn === -1 ? "Any" : getColLabel(trigger.targetColumn!)}
+                                  {trigger.targetColumn === -1
+                                    ? "Any"
+                                    : getColLabel(trigger.targetColumn!)}
                                 </span>
                               </>
                             )}
@@ -275,28 +366,46 @@ export function TriggersConsole({
                             Action:{" "}
                             {trigger.actionType === "auto_fill" ? (
                               <span>
-                                Auto-fill Column <strong>{getColLabel(trigger.actionColumn!)}</strong> with{" "}
-                                <code>{trigger.actionValueFormula}</code>
+                                Auto-fill Column{" "}
+                                <strong>
+                                  {getColLabel(trigger.actionColumn!)}
+                                </strong>{" "}
+                                with <code>{trigger.actionValueFormula}</code>
                               </span>
                             ) : (
-                              <span style={{ color: "#94a3b8" }}>Log to console only</span>
+                              <span style={{ color: "#94a3b8" }}>
+                                Log to console only
+                              </span>
                             )}
                           </p>
                         </div>
 
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          <button 
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <button
                             className="tg-toggle-btn"
                             onClick={() => onToggleTrigger(trigger.id)}
-                            title={trigger.isActive ? "Deactivate trigger" : "Activate trigger"}
+                            title={
+                              trigger.isActive
+                                ? "Deactivate trigger"
+                                : "Activate trigger"
+                            }
                           >
                             {trigger.isActive ? (
-                              <ToggleRight size={22} color="var(--clr-success)" />
+                              <ToggleRight
+                                size={22}
+                                color="var(--clr-success)"
+                              />
                             ) : (
                               <ToggleLeft size={22} color="#475569" />
                             )}
                           </button>
-                          <button 
+                          <button
                             className="tg-icon-btn tg-icon-btn--danger"
                             onClick={() => onDeleteTrigger(trigger.id)}
                             title="Delete trigger"
@@ -316,9 +425,9 @@ export function TriggersConsole({
                 <form onSubmit={handleSubmitTrigger} className="tg-form">
                   <div className="tg-form-group">
                     <label>Trigger Name</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Log products edit or Stamp changes" 
+                    <input
+                      type="text"
+                      placeholder="e.g. Log products edit or Stamp changes"
                       value={triggerName}
                       onChange={(e) => setTriggerName(e.target.value)}
                       required
@@ -328,9 +437,13 @@ export function TriggersConsole({
                   <div className="tg-form-row">
                     <div className="tg-form-group">
                       <label>Event Type</label>
-                      <select 
+                      <select
                         value={eventType}
-                        onChange={(e) => setEventType(e.target.value as "row_added" | "cell_changed")}
+                        onChange={(e) =>
+                          setEventType(
+                            e.target.value as "row_added" | "cell_changed",
+                          )
+                        }
                       >
                         <option value="cell_changed">Cell Value Changed</option>
                         <option value="row_added">Row Added</option>
@@ -339,13 +452,15 @@ export function TriggersConsole({
 
                     <div className="tg-form-group">
                       <label>Target Sheet</label>
-                      <select 
-                        value={sheetName} 
+                      <select
+                        value={sheetName}
                         onChange={(e) => setSheetName(e.target.value)}
                       >
                         <option value="All">All Sheets</option>
                         {sheets.map((s) => (
-                          <option key={s.name} value={s.name}>{s.name}</option>
+                          <option key={s.name} value={s.name}>
+                            {s.name}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -354,13 +469,17 @@ export function TriggersConsole({
                   {eventType === "cell_changed" && (
                     <div className="tg-form-group">
                       <label>Trigger on column</label>
-                      <select 
-                        value={targetColumn} 
-                        onChange={(e) => setTargetColumn(Number(e.target.value))}
+                      <select
+                        value={targetColumn}
+                        onChange={(e) =>
+                          setTargetColumn(Number(e.target.value))
+                        }
                       >
                         <option value={-1}>Any Column</option>
                         {Array.from({ length: colCount }).map((_, idx) => (
-                          <option key={idx} value={idx}>Column {getColLabel(idx)}</option>
+                          <option key={idx} value={idx}>
+                            Column {getColLabel(idx)}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -368,12 +487,20 @@ export function TriggersConsole({
 
                   <div className="tg-form-group">
                     <label>Action</label>
-                    <select 
+                    <select
                       value={actionType}
-                      onChange={(e) => setActionType(e.target.value as "auto_fill" | "log_only")}
+                      onChange={(e) =>
+                        setActionType(
+                          e.target.value as "auto_fill" | "log_only",
+                        )
+                      }
                     >
-                      <option value="log_only">Write description to Change Log only</option>
-                      <option value="auto_fill">Auto-fill another cell in the same row</option>
+                      <option value="log_only">
+                        Write description to Change Log only
+                      </option>
+                      <option value="auto_fill">
+                        Auto-fill another cell in the same row
+                      </option>
                     </select>
                   </div>
 
@@ -381,21 +508,25 @@ export function TriggersConsole({
                     <div className="tg-form-row">
                       <div className="tg-form-group">
                         <label>Target Write Column</label>
-                        <select 
+                        <select
                           value={actionColumn}
-                          onChange={(e) => setActionColumn(Number(e.target.value))}
+                          onChange={(e) =>
+                            setActionColumn(Number(e.target.value))
+                          }
                         >
                           {Array.from({ length: colCount }).map((_, idx) => (
-                            <option key={idx} value={idx}>Column {getColLabel(idx)}</option>
+                            <option key={idx} value={idx}>
+                              Column {getColLabel(idx)}
+                            </option>
                           ))}
                         </select>
                       </div>
 
                       <div className="tg-form-group">
                         <label>Value / Template</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g. {{timestamp}} or ROW-{{row}}" 
+                        <input
+                          type="text"
+                          placeholder="e.g. {{timestamp}} or ROW-{{row}}"
                           value={actionValue}
                           onChange={(e) => setActionValue(e.target.value)}
                           required
@@ -420,12 +551,16 @@ export function TriggersConsole({
               <strong>Config details:</strong> {dbDetails}
             </span>
             <div style={{ display: "flex", gap: "8px" }}>
-              <button 
-                className="tg-btn tg-btn--secondary" 
+              <button
+                className="tg-btn tg-btn--secondary"
                 onClick={onTestConnection}
                 disabled={isTestingConnection}
               >
-                {isTestingConnection ? <RefreshCw size={12} className="spin" /> : <Database size={12} />}
+                {isTestingConnection ? (
+                  <RefreshCw size={12} className="spin" />
+                ) : (
+                  <Database size={12} />
+                )}
                 Test Database Connection
               </button>
               <button className="tg-btn" onClick={onSyncDb}>
