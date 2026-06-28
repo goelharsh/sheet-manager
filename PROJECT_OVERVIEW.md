@@ -13,8 +13,14 @@ sheet-manager/
 ├── src/
 │   ├── app/
 │   │   ├── api/
-│   │   │   └── db/
-│   │   │       └── route.ts         # Serverless database API with Upstash Redis & local fallbacks
+│   │   │   ├── db/
+│   │   │   │   └── route.ts         # Serverless database API with Upstash Redis & local fallbacks
+│   │   │   ├── sheets/
+│   │   │   │   └── [id]/
+│   │   │   │       └── route.ts     # Dynamic JSON API endpoint for worksheets with sorting & security
+│   │   │   └── webhooks/
+│   │   │       └── dispatch/
+│   │   │           └── route.ts     # Server-side proxy for outgoing webhook POST dispatches
 │   │   ├── globals.css              # Global styles, Tailwind definitions, custom console drawer styles
 │   │   ├── layout.tsx               # App layout shell
 │   │   └── page.tsx                 # Main entry page mounting the SheetManager
@@ -69,6 +75,13 @@ The application is structured as a wizard guiding the user through a local-to-cl
 4.  **Certificate Mail Merge Workflow (Step 4):**
     *   Combines spreadsheet records with Google Docs template files.
     *   Clones templates, fills variable placeholders (e.g. `{Name}`, `{Rank}`), saves them publicly in Google Drive, logs URLs back into the spreadsheet grid, and dispatches custom notification emails via the Gmail API.
+5.  **Spreadsheet-to-JSON API:**
+    *   Serves worksheet data as clean, queryable JSON endpoints.
+    *   Supports dynamic filtering (`?col=val`), pagination (`_limit` / `_offset`), and sorting (`_sort` / `_order`).
+    *   Includes public access settings or private API key authorization.
+6.  **Outgoing Webhooks:**
+    *   Triggers real-time outward HTTP POST dispatches to external URLs on cell changes and row additions.
+    *   Uses server-side proxy handlers to prevent client-side CORS issues.
 
 ---
 

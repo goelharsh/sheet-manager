@@ -18,8 +18,17 @@ import {
   ChevronDown,
   ChevronUp,
   MousePointerClick,
+  Copy,
+  Globe,
+  Lock,
+  Key,
+  Eye,
+  EyeOff,
+  Code,
+  Activity,
+  Send,
 } from "lucide-react";
-import { getColLabel, ImportedSheet } from "./SpreadsheetGrid";
+import { getColLabel, ImportedSheet, SheetApiSettings, SheetWebhookSettings } from "./SpreadsheetGrid";
 import { ClickAnalyticsPanel } from "@/components/ClickAnalyticsPanel";
 
 export interface Trigger {
@@ -58,6 +67,17 @@ interface TriggersConsoleProps {
   onClearLogs: () => void;
   onTestConnection: () => void;
   onSyncDb: () => void;
+  onUpdateSheetApiSettings: (sheetIdx: number, settings: SheetApiSettings) => void;
+  onUpdateSheetWebhookSettings: (sheetIdx: number, settings: SheetWebhookSettings) => void;
+}
+
+function generateApiKey(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "sk_live_";
+  for (let i = 0; i < 32; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
 }
 
 export function TriggersConsole({
@@ -74,9 +94,11 @@ export function TriggersConsole({
   onClearLogs,
   onTestConnection,
   onSyncDb,
+  onUpdateSheetApiSettings,
+  onUpdateSheetWebhookSettings,
 }: TriggersConsoleProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"logs" | "triggers" | "analytics">(
+  const [activeTab, setActiveTab] = useState<"logs" | "triggers" | "analytics" | "api" | "webhook">(
     "logs",
   );
 
@@ -99,6 +121,271 @@ export function TriggersConsole({
 
   const currentSheet = sheets[activeSheetIdx];
   const colCount = currentSheet?.data[0]?.length || 4;
+
+  // API Tab State & Handlers
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null);
+  const [activeSnippetTab, setActiveSnippetTab] = useState<"curl" | "js" | "python">("curl");
+  const [origin, setOrigin] = useState("http://localhost:3050");
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOrigin(window.location.origin);
+    }
+  }, []);
+
+  const apiSettings = currentSheet?.apiSettings || {
+    enabled: false,
+    isPublic: true,
+    apiKey: "",
+  };
+
+  const handleToggleApi = () => {
+    const nextEnabled = !apiSettings.enabled;
+    let nextKey = apiSettings.apiKey;
+    if (nextEnabled && !nextKey && !apiSettings.isPublic) {
+      nextKey = generateApiKey();
+    }
+    onUpdateSheetApiSettings(activeSheetIdx, {
+      ...apiSettings,
+      enabled: nextEnabled,
+      apiKey: nextKey,
+    });
+  };
+
+  const handleTogglePublic = (isPublic: boolean) => {
+    let nextKey = apiSettings.apiKey;
+    if (!isPublic && !nextKey) {
+      nextKey = generateApiKey();
+    }
+    onUpdateSheetApiSettings(activeSheetIdx, {
+      ...apiSettings,
+      isPublic,
+      apiKey: nextKey,
+    });
+  };
+
+  const handleRegenerateKey = () => {
+    onUpdateSheetApiSettings(activeSheetIdx, {
+      ...apiSettings,
+      apiKey: generateApiKey(),
+    });
+  };
+
+  const copyToClipboard = (text: string, type: "url" | "key" | "curl" | "js" | "python") => {
+    navigator.clipboard.writeText(text);
+    if (type === "url") {
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2000);
+    } else if (type === "key") {
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
+    } else {
+      setCopiedSnippet(type);
+      setTimeout(() => setCopiedSnippet(null), 2000);
+    }
+  };
+
+  const currentSheetName = currentSheet?.name || "sheet";
+  const endpointUrl = `${origin}/api/sheets/${encodeURIComponent(currentSheetName)}`;
+  const apiKeyToUse = apiSettings.apiKey || "YOUR_API_KEY";
+  const authHeaderValue = `Bearer ${apiKeyToUse}`;
+
+  const curlSnippet = apiSettings.isPublic
+    ? `curl -X GET "${endpointUrl}"`
+    : `curl -X GET "${endpointUrl}" \\\n  -H "Authorization: ${authHeaderValue}"`;
+
+  const jsSnippet = apiSettings.isPublic
+    ? `fetch("${endpointUrl}")
+  .then(res => res.json())
+  .then(data => console.log(data))
+  .catch(err => console.error(err));`
+    : `fetch("${endpointUrl}", {
+  headers: {
+    "Authorization": "${authHeaderValue}"
+  }
+})
+  .then(res => res.json())
+  .then(data => console.log(data))
+  .catch(err => console.error(err));`;
+
+  const pythonSnippet = apiSettings.isPublic
+    ? `import requests
+
+url = "${endpointUrl}"
+
+response = requests.get(url)
+if response.status_code == 200:
+    data = response.json()
+    print(data)
+else:
+    print(f"Error: {response.status_code}", response.text)`
+    : `import requests
+
+url = "${endpointUrl}"
+headers = {
+    "Authorization": "${authHeaderValue}"
+}
+
+response = requests.get(url, headers=headers)
+if response.status_code == 200:
+    data = response.json()
+    print(data)
+else:
+    print(f"Error: {response.status_code}", response.json())`;
+
+  const getJsonPreview = () => {
+    if (!currentSheet || !currentSheet.data || currentSheet.data.length === 0) {
+      return "[]";
+    }
+
+    if (!apiSettings.enabled) {
+      return JSON.stringify({
+        error: `API access is disabled for sheet "${currentSheet.name}".`,
+        message: "Go to API settings tab and enable it to start querying."
+      }, null, 2);
+    }
+
+    const rows = currentSheet.data;
+    const headers: string[] = [];
+    const seenHeaders = new Map<string, number>();
+
+    rows[0].forEach((cell: any, index: number) => {
+      let val = cell && cell.value !== undefined ? cell.value.toString().trim() : "";
+      if (!val) {
+        val = `column_${index + 1}`;
+      }
+
+      if (seenHeaders.has(val)) {
+        const count = seenHeaders.get(val)! + 1;
+        seenHeaders.set(val, count);
+        val = `${val}_${count}`;
+      } else {
+        seenHeaders.set(val, 1);
+      }
+      headers.push(val);
+    });
+
+    const records = rows.slice(1, 4).map((row: any[]) => {
+      const record: Record<string, any> = {};
+      headers.forEach((header: string, index: number) => {
+        const cell = row[index];
+        record[header] = cell && cell.value !== undefined ? cell.value : "";
+      });
+      return record;
+    });
+
+    return JSON.stringify(records, null, 2);
+  };
+
+  // Webhooks Tab State & Handlers
+  const [webhookUrlInput, setWebhookUrlInput] = useState("");
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  const [webhookTestResult, setWebhookTestResult] = useState<{
+    ok: boolean;
+    status: number;
+    text: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    setWebhookUrlInput(currentSheet?.webhookSettings?.url || "");
+    setWebhookTestResult(null);
+  }, [activeSheetIdx, currentSheet]);
+
+  const webhookSettings = currentSheet?.webhookSettings || {
+    enabled: false,
+    url: "",
+  };
+
+  const handleToggleWebhook = () => {
+    const nextEnabled = !webhookSettings.enabled;
+    onUpdateSheetWebhookSettings(activeSheetIdx, {
+      ...webhookSettings,
+      enabled: nextEnabled,
+    });
+  };
+
+  const handleSaveWebhookSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    onUpdateSheetWebhookSettings(activeSheetIdx, {
+      ...webhookSettings,
+      url: webhookUrlInput.trim(),
+    });
+  };
+
+  const handleSendTestWebhook = async () => {
+    if (!webhookUrlInput.trim()) return;
+    setIsTestingWebhook(true);
+    setWebhookTestResult(null);
+    try {
+      const res = await fetch("/api/webhooks/dispatch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          webhookUrl: webhookUrlInput.trim(),
+          payload: {
+            event: "test_connection",
+            sheetName: currentSheet?.name || "test",
+            timestamp: new Date().toISOString(),
+            data: {
+              message: "Test webhook connection from Sheet Manager console drawer.",
+            },
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setWebhookTestResult({
+          ok: data.status >= 200 && data.status < 300,
+          status: data.status || 200,
+          text: data.statusText || (data.status >= 200 && data.status < 300 ? "Success" : "Failed"),
+        });
+      } else {
+        setWebhookTestResult({
+          ok: false,
+          status: res.status,
+          text: data.error || "Failed to dispatch",
+        });
+      }
+    } catch (err) {
+      setWebhookTestResult({
+        ok: false,
+        status: 500,
+        text: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setIsTestingWebhook(false);
+    }
+  };
+
+  // Sample webhook payloads for documentation
+  const cellChangedSample = JSON.stringify({
+    event: "cell_changed",
+    sheetName: currentSheetName,
+    timestamp: new Date().toISOString(),
+    data: {
+      row: 3,
+      col: 1,
+      prevVal: "100",
+      newVal: "150",
+      cellRef: "B4"
+    }
+  }, null, 2);
+
+  const rowAddedSample = JSON.stringify({
+    event: "row_added",
+    sheetName: currentSheetName,
+    timestamp: new Date().toISOString(),
+    data: {
+      rowIndex: 4,
+      details: "Row 5 was added."
+    }
+  }, null, 2);
 
   const handleSubmitTrigger = (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,6 +469,28 @@ export function TriggersConsole({
           >
             <MousePointerClick size={12} />
             Link Analytics
+          </button>
+          <button
+            className={`tg-tab-btn ${activeTab === "api" ? "tg-tab-btn--active" : ""}`}
+            onClick={() => {
+              setIsOpen(true);
+              setActiveTab("api");
+            }}
+            style={{ display: "flex", alignItems: "center", gap: 5 }}
+          >
+            <Code size={12} />
+            JSON API
+          </button>
+          <button
+            className={`tg-tab-btn ${activeTab === "webhook" ? "tg-tab-btn--active" : ""}`}
+            onClick={() => {
+              setIsOpen(true);
+              setActiveTab("webhook");
+            }}
+            style={{ display: "flex", alignItems: "center", gap: 5 }}
+          >
+            <Activity size={12} />
+            Webhooks
           </button>
 
           <div className="tg-header-divider" />
@@ -306,6 +615,350 @@ export function TriggersConsole({
           ) : activeTab === "analytics" ? (
             <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
               <ClickAnalyticsPanel />
+            </div>
+          ) : activeTab === "api" ? (
+            <div className="tg-tab-content" style={{ padding: 0 }}>
+              <div className="flex h-full w-full gap-4 text-xs p-3 min-h-0 select-text">
+                {/* Left Column: API Access Settings & Integration Snippets */}
+                <div className="flex-[3] flex flex-col gap-4 overflow-y-auto pr-2 scrollbar-dark min-h-0">
+                  
+                  {/* Row 1: Enable & Security Mode */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-800/20 p-3 rounded-lg border border-slate-700/30">
+                    <div className="flex items-center gap-3">
+                      <span className="text-slate-300 font-semibold text-sm">REST API Integration</span>
+                      <button
+                        onClick={handleToggleApi}
+                        className={`px-3 py-1.5 rounded font-semibold text-[11px] transition-colors flex items-center gap-1.5 ${
+                          apiSettings.enabled
+                            ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                            : "bg-slate-700 hover:bg-slate-600 text-slate-200"
+                        }`}
+                      >
+                        {apiSettings.enabled ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                        {apiSettings.enabled ? "API Enabled" : "API Disabled"}
+                      </button>
+                    </div>
+
+                    {apiSettings.enabled && (
+                      <div className="flex gap-2 items-center">
+                        <span className="text-slate-400 font-medium">Access Level:</span>
+                        <div className="bg-slate-800 p-0.5 rounded-lg inline-flex border border-slate-700">
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePublic(true)}
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                              apiSettings.isPublic
+                                ? "bg-slate-700 text-white shadow-sm"
+                                : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            <span className="flex items-center gap-1"><Globe size={12} /> Public</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePublic(false)}
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                              !apiSettings.isPublic
+                                ? "bg-slate-700 text-white shadow-sm"
+                                : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            <span className="flex items-center gap-1"><Lock size={12} /> Private</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {apiSettings.enabled && (
+                    <>
+                      {/* Row 2: API Secret Key (only if private) */}
+                      {!apiSettings.isPublic && (
+                        <div className="flex flex-col gap-1.5 bg-slate-800/40 p-3 rounded-lg border border-slate-700/50">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400 font-semibold flex items-center gap-1.5">
+                              <Key size={13} className="text-amber-400" /> API Secret Key
+                            </span>
+                            <button
+                              onClick={handleRegenerateKey}
+                              className="text-slate-400 hover:text-slate-200 text-[10px] flex items-center gap-1 hover:underline cursor-pointer"
+                              title="Generate a new random secret API key"
+                            >
+                              <RefreshCw size={10} /> Regenerate Key
+                            </button>
+                          </div>
+                          <div className="flex gap-2">
+                            <div className="relative flex-1">
+                              <input
+                                type={showApiKey ? "text" : "password"}
+                                readOnly
+                                value={apiSettings.apiKey || ""}
+                                className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 pr-8 text-xs font-mono text-slate-300 outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowApiKey(!showApiKey)}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                              >
+                                {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                              </button>
+                            </div>
+                            <button
+                              onClick={() => copyToClipboard(apiSettings.apiKey || "", "key")}
+                              className="bg-slate-700 hover:bg-slate-600 text-white px-3 rounded text-xs flex items-center gap-1 shrink-0 font-medium cursor-pointer"
+                            >
+                              {copiedKey ? <CheckCircle2 size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                              {copiedKey ? "Copied" : "Copy Key"}
+                            </button>
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            Pass this key in the request header as <code>Authorization: Bearer sk_live_...</code>
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Row 3: Live Endpoint URL */}
+                      <div className="flex flex-col gap-1.5 bg-slate-800/40 p-3 rounded-lg border border-slate-700/50">
+                        <span className="text-slate-400 font-semibold">API Endpoint URL</span>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            readOnly
+                            value={endpointUrl}
+                            className="flex-1 bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs font-mono text-slate-300 outline-none"
+                          />
+                          <button
+                            onClick={() => copyToClipboard(endpointUrl, "url")}
+                            className="bg-slate-700 hover:bg-slate-600 text-white px-3 rounded text-xs flex items-center gap-1 shrink-0 font-medium cursor-pointer"
+                          >
+                            {copiedUrl ? <CheckCircle2 size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                            {copiedUrl ? "Copied" : "Copy URL"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Row 4: Code Snippets */}
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2 border-b border-slate-700 pb-1.5">
+                          <Code size={13} className="text-sky-400" />
+                          <span className="text-slate-400 font-semibold">Integration Snippets</span>
+                          <div className="ml-auto flex gap-1 bg-slate-800 p-0.5 rounded text-[10px]">
+                            <button
+                              onClick={() => setActiveSnippetTab("curl")}
+                              className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                                activeSnippetTab === "curl" ? "bg-slate-700 text-white font-semibold" : "text-slate-400 hover:text-slate-200"
+                              }`}
+                            >
+                              cURL
+                            </button>
+                            <button
+                              onClick={() => setActiveSnippetTab("js")}
+                              className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                                activeSnippetTab === "js" ? "bg-slate-700 text-white font-semibold" : "text-slate-400 hover:text-slate-200"
+                              }`}
+                            >
+                              JS Fetch
+                            </button>
+                            <button
+                              onClick={() => setActiveSnippetTab("python")}
+                              className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
+                                activeSnippetTab === "python" ? "bg-slate-700 text-white font-semibold" : "text-slate-400 hover:text-slate-200"
+                              }`}
+                            >
+                              Python
+                            </button>
+                          </div>
+                        </div>
+                        <div className="relative bg-slate-950/80 rounded border border-slate-800 p-2.5 font-mono text-[10px] text-slate-300 overflow-x-auto min-h-[75px] max-h-[110px] whitespace-pre scrollbar-dark">
+                          <code>
+                            {activeSnippetTab === "curl" && curlSnippet}
+                            {activeSnippetTab === "js" && jsSnippet}
+                            {activeSnippetTab === "python" && pythonSnippet}
+                          </code>
+                          <button
+                            onClick={() => {
+                              const snippet = activeSnippetTab === "curl" ? curlSnippet : activeSnippetTab === "js" ? jsSnippet : pythonSnippet;
+                              copyToClipboard(snippet, activeSnippetTab);
+                            }}
+                            className="absolute right-2 top-2 bg-slate-850 hover:bg-slate-700 text-slate-300 p-1 rounded transition-colors cursor-pointer"
+                            title="Copy snippet"
+                          >
+                            {copiedSnippet === activeSnippetTab ? (
+                              <CheckCircle2 size={12} className="text-emerald-400" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {!apiSettings.enabled && (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-slate-800/10 rounded-lg border border-dashed border-slate-700/50">
+                      <Code size={32} className="text-slate-600 mb-2" />
+                      <h4 className="text-slate-300 font-semibold mb-1">API Access is Disabled</h4>
+                      <p className="text-slate-500 max-w-sm">
+                        Enable the REST API for this worksheet to expose its rows as a standard JSON endpoint for external use.
+                      </p>
+                    </div>
+                  )}
+
+                </div>
+
+                {/* Right Column: Live API Response Preview */}
+                <div className="flex-[2] border-l border-slate-800 pl-4 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between border-b border-slate-700 pb-1.5 shrink-0 mb-2">
+                    <span className="text-slate-400 font-semibold">Response Preview (JSON)</span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        apiSettings.enabled
+                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                          : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                      }`}
+                    >
+                      {apiSettings.enabled ? "200 OK" : "403 Forbidden"}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-h-0 bg-slate-950/80 rounded border border-slate-800 p-2.5 font-mono text-[10px] overflow-y-auto scrollbar-dark text-left">
+                    <pre className="text-emerald-400/90 whitespace-pre-wrap">{getJsonPreview()}</pre>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          ) : activeTab === "webhook" ? (
+            <div className="tg-tab-content" style={{ padding: 0 }}>
+              <div className="flex h-full w-full gap-4 text-xs p-3 min-h-0 select-text">
+                {/* Left Column: Webhook Settings */}
+                <div className="flex-[3] flex flex-col gap-4 overflow-y-auto pr-2 scrollbar-dark min-h-0">
+                  
+                  {/* Status Toggle & Form */}
+                  <form onSubmit={handleSaveWebhookSettings} className="flex flex-col gap-4 bg-slate-800/20 p-3 rounded-lg border border-slate-700/30">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-300 font-semibold text-sm">Outgoing Webhook Settings</span>
+                      <button
+                        type="button"
+                        onClick={handleToggleWebhook}
+                        className={`px-3 py-1.5 rounded font-semibold text-[11px] transition-colors flex items-center gap-1.5 cursor-pointer ${
+                          webhookSettings.enabled
+                            ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                            : "bg-slate-700 hover:bg-slate-600 text-slate-200"
+                        }`}
+                      >
+                        {webhookSettings.enabled ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                        {webhookSettings.enabled ? "Webhooks Enabled" : "Webhooks Disabled"}
+                      </button>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-slate-400 font-medium">Target Webhook URL</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          placeholder="e.g. https://your-server.com/webhook"
+                          value={webhookUrlInput}
+                          onChange={(e) => setWebhookUrlInput(e.target.value)}
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-300 outline-none"
+                          required={webhookSettings.enabled}
+                        />
+                        <button
+                          type="submit"
+                          className="bg-sky-600 hover:bg-sky-500 text-white px-4 rounded text-xs font-semibold cursor-pointer"
+                        >
+                          Save Settings
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-medium">
+                        Changes (cell edits and row additions) will be posted to this URL.
+                      </span>
+                    </div>
+                  </form>
+
+                  {/* Outgoing Test Tool */}
+                  {webhookSettings.url && (
+                    <div className="flex flex-col gap-3 bg-slate-800/20 p-3 rounded-lg border border-slate-700/30">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-300 font-semibold">Test Connection</span>
+                        <button
+                          type="button"
+                          onClick={handleSendTestWebhook}
+                          disabled={isTestingWebhook || !webhookUrlInput}
+                          className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          {isTestingWebhook ? (
+                            <RefreshCw size={12} className="spin" />
+                          ) : (
+                            <Send size={12} />
+                          )}
+                          Send Test Webhook
+                        </button>
+                      </div>
+                      
+                      {webhookTestResult && (
+                        <div
+                          className={`p-2.5 rounded border text-[11px] font-medium flex items-start gap-2 ${
+                            webhookTestResult.ok
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                          }`}
+                        >
+                          {webhookTestResult.ok ? (
+                            <CheckCircle2 size={14} className="shrink-0 mt-0.5" />
+                          ) : (
+                            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                          )}
+                          <div>
+                            <strong>Status: {webhookTestResult.status} {webhookTestResult.text}</strong>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {webhookTestResult.ok
+                                ? "Webhook delivered successfully! Your endpoint responded with a success status."
+                                : "Delivery failed. Please check the URL, CORS rules, or server logs."}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Schema Info */}
+                  <div className="flex flex-col gap-2">
+                    <span className="text-slate-400 font-semibold flex items-center gap-1.5">
+                      <Info size={13} className="text-sky-400" /> Webhook Integration Guidelines
+                    </span>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Your target server must accept HTTP <code>POST</code> requests with a <code>Content-Type: application/json</code> header.
+                      The server should respond with an HTTP status code in the 2xx range to confirm successful receipt of the payload.
+                    </p>
+                  </div>
+
+                </div>
+
+                {/* Right Column: Webhook Payloads Documentation */}
+                <div className="flex-[2] border-l border-slate-800 pl-4 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between border-b border-slate-700 pb-1.5 shrink-0 mb-2">
+                    <span className="text-slate-400 font-semibold">Payload Documentation</span>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark flex flex-col gap-4">
+                    
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-slate-300 font-semibold">Event: cell_changed</span>
+                      <pre className="bg-slate-950/80 rounded border border-slate-800 p-2 font-mono text-[9px] text-emerald-400/90 overflow-x-auto whitespace-pre text-left">
+                        {cellChangedSample}
+                      </pre>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-slate-300 font-semibold">Event: row_added</span>
+                      <pre className="bg-slate-950/80 rounded border border-slate-800 p-2 font-mono text-[9px] text-emerald-400/90 overflow-x-auto whitespace-pre text-left">
+                        {rowAddedSample}
+                      </pre>
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
             </div>
           ) : (
             <div className="tg-tab-content tg-grid-2">

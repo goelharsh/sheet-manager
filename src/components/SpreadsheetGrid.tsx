@@ -39,11 +39,24 @@ export interface ColumnMetadata {
   hidden?: boolean;
 }
 
+export interface SheetWebhookSettings {
+  enabled: boolean;
+  url: string;
+}
+
+export interface SheetApiSettings {
+  enabled: boolean;
+  isPublic: boolean;
+  apiKey?: string;
+}
+
 export interface ImportedSheet {
   name: string;
   data: CellData[][];
   cols?: ColumnMetadata[];
   rows?: RowMetadata[];
+  apiSettings?: SheetApiSettings;
+  webhookSettings?: SheetWebhookSettings;
 }
 
 interface SpreadsheetGridProps {
