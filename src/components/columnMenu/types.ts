@@ -1,13 +1,15 @@
 export type ColumnType =
   | "text"
   | "number"
-  | "checkbox"
-  | "url"
+  | "currency"
   | "date"
+  | "url"
+  | "email"
+  | "image"
+  | "checkbox"
   | "select"
   | "multi-select"
-  | "email"
-  | "currency"
+  | "assigned-to"
   | "paragraph";
 
 export type SubmenuKey = "insertLeft" | "insertRight" | "changeColor" | "columnType";

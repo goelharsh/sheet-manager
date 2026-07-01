@@ -155,15 +155,17 @@ export function ColorSubmenu({ x, y, currentColor, onSelect }: ColorSubmenuProps
 // ── Column type submenu ─────────────────────────────────────────────────────
 
 const COLUMN_TYPES: { type: ColumnType; label: string; icon: string }[] = [
-  { type: "checkbox",     label: "Checkbox",      icon: "☑" },
-  { type: "number",       label: "Number",        icon: "#" },
   { type: "text",         label: "Text",          icon: "T" },
-  { type: "url",          label: "URL",           icon: "↗" },
+  { type: "number",       label: "Number",        icon: "#" },
+  { type: "currency",     label: "Currency",      icon: "$" },
   { type: "date",         label: "Date",          icon: "▦" },
+  { type: "url",          label: "URL",           icon: "↗" },
+  { type: "email",        label: "Email",         icon: "@" },
+  { type: "image",        label: "Image from URL", icon: "🖼" },
+  { type: "checkbox",     label: "Checkbox",      icon: "☑" },
   { type: "select",       label: "Select",        icon: "○" },
   { type: "multi-select", label: "Multi-select",  icon: "≡" },
-  { type: "email",        label: "Email",         icon: "@" },
-  { type: "currency",     label: "Currency",      icon: "$" },
+  { type: "assigned-to",  label: "Assigned to",   icon: "👤" },
   { type: "paragraph",    label: "Paragraph",     icon: "¶" },
 ];
 

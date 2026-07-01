@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Bold,
   Italic,
@@ -23,9 +23,15 @@ import {
   DollarSign,
   List,
   Circle,
+  ChevronDown,
+  User,
+  Image as ImageIcon,
 } from "lucide-react";
 import { ColumnContextMenu } from "./ColumnContextMenu";
 import { RowContextMenu } from "./RowContextMenu";
+import { AddColumnMenu } from "./AddColumnMenu";
+import { TypedCellRenderer } from "./columnMenu/TypedCellRenderer";
+import { SelectCellEditor } from "./columnMenu/SelectCellEditor";
 import { ColumnType } from "./columnMenu/types";
 import { ToastType } from "./ui/Toast";
 
@@ -112,16 +118,18 @@ export function getColLabel(colIdx: number): string {
 function TypeIcon({ type }: { type?: ColumnType }) {
   const s = 10;
   switch (type) {
-    case "number":      return <Hash size={s} />;
-    case "checkbox":    return <CheckSquare size={s} />;
-    case "url":         return <Link2 size={s} />;
-    case "date":        return <Calendar size={s} />;
-    case "email":       return <AtSign size={s} />;
-    case "currency":    return <DollarSign size={s} />;
-    case "paragraph":   return <AlignLeft size={s} />;
-    case "select":      return <Circle size={s} />;
+    case "number":       return <Hash size={s} />;
+    case "currency":     return <DollarSign size={s} />;
+    case "checkbox":     return <CheckSquare size={s} />;
+    case "url":          return <Link2 size={s} />;
+    case "date":         return <Calendar size={s} />;
+    case "email":        return <AtSign size={s} />;
+    case "image":        return <ImageIcon size={s} />;
+    case "paragraph":    return <AlignLeft size={s} />;
+    case "select":       return <Circle size={s} />;
     case "multi-select": return <List size={s} />;
-    default:            return <span style={{ fontSize: "10px", fontWeight: 700 }}>T</span>;
+    case "assigned-to":  return <User size={s} />;
+    default:             return <span style={{ fontSize: "10px", fontWeight: 700 }}>T</span>;
   }
 }
 
@@ -235,6 +243,14 @@ export function SpreadsheetGrid({
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
 
+  // Add column menu state
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const addColBtnRef = useRef<HTMLButtonElement>(null);
+  const [addMenuPos, setAddMenuPos] = useState({ x: 0, y: 0 });
+
+  // Select / multi-select cell editor state
+  const [selectEditorPos, setSelectEditorPos] = useState<{ x: number; y: number } | null>(null);
+
   const commitRename = (colIdx: number, name: string) => {
     const updatedSheets = [...sheets];
     const sheet = { ...updatedSheets[activeSheetIdx] };
@@ -249,6 +265,40 @@ export function SpreadsheetGrid({
     onSheetsChange(updatedSheets);
     setRenamingColIdx(null);
   };
+
+  const addTypedColumn = useCallback(
+    (type: ColumnType, name: string) => {
+      const updatedSheets = [...sheets];
+      const sheet = { ...updatedSheets[activeSheetIdx] };
+      const sheetData = sheet.data.map((r) => [...r.map((c) => ({ ...c })), { value: "", style: {} }]);
+      const colCount = sheetData[0].length;
+      const newCols: ColumnMetadata[] = sheet.cols
+        ? [...sheet.cols.map((c) => ({ ...c }))]
+        : Array.from({ length: colCount - 1 }, () => ({} as ColumnMetadata));
+      while (newCols.length < colCount - 1) newCols.push({} as ColumnMetadata);
+      newCols.push({ type, name });
+      sheet.data = sheetData;
+      sheet.cols = newCols;
+      updatedSheets[activeSheetIdx] = sheet;
+      onSheetsChange(updatedSheets);
+    },
+    [sheets, activeSheetIdx, onSheetsChange]
+  );
+
+  const getColumnUniqueValues = useCallback(
+    (colIdx: number): string[] => {
+      const seen = new Set<string>();
+      for (let r = 1; r < gridData.length; r++) {
+        const val = gridData[r]?.[colIdx]?.value ?? "";
+        val.split(",").forEach((v) => {
+          const t = v.trim();
+          if (t) seen.add(t);
+        });
+      }
+      return Array.from(seen);
+    },
+    [gridData]
+  );
 
   // Sync formula bar input value with selected cell value
   useEffect(() => {
@@ -283,10 +333,34 @@ export function SpreadsheetGrid({
     setInlineEditingCell(null);
   };
 
-  const handleCellDoubleClick = (row: number, col: number) => {
+  const handleCellDoubleClick = (
+    row: number,
+    col: number,
+    e: React.MouseEvent<HTMLTableCellElement>
+  ) => {
+    const colType = colsMetadata[col]?.type as ColumnType | undefined;
+    // Checkboxes toggle on single click — no inline edit
+    if (colType === "checkbox") return;
+
     onSelectedCellChange({ row, col });
     setInlineEditingCell({ row, col });
-    setInlineEditValue(gridData[row]?.[col]?.value ?? "");
+
+    const rawVal = gridData[row]?.[col]?.value ?? "";
+
+    if (colType === "select" || colType === "multi-select") {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setSelectEditorPos({ x: rect.left, y: rect.bottom });
+      setInlineEditValue(rawVal);
+    } else if (colType === "date") {
+      // Normalise to YYYY-MM-DD so <input type="date"> can read it
+      const d = new Date(rawVal);
+      const iso = !isNaN(d.getTime())
+        ? d.toISOString().split("T")[0]
+        : rawVal;
+      setInlineEditValue(iso);
+    } else {
+      setInlineEditValue(rawVal);
+    }
   };
 
   const updateCellValue = (row: number, col: number, newValue: string) => {
@@ -776,6 +850,58 @@ export function SpreadsheetGrid({
                   </th>
                 );
               })}
+
+              {/* Add Column Button */}
+              <th
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 20,
+                  width: "140px",
+                  height: "28px",
+                  background: "#f4f4f2",
+                  borderRight: "1px solid var(--at-border)",
+                  borderBottom: "1px solid var(--at-border)",
+                  padding: 0,
+                  verticalAlign: "middle",
+                }}
+              >
+                <button
+                  ref={addColBtnRef}
+                  type="button"
+                  onClick={() => {
+                    if (addColBtnRef.current) {
+                      const rect = addColBtnRef.current.getBoundingClientRect();
+                      setAddMenuPos({ x: rect.left, y: rect.bottom + 4 });
+                    }
+                    setShowAddMenu(true);
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "4px",
+                    width: "100%",
+                    height: "100%",
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--at-accent)",
+                    fontSize: "11.5px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    padding: "0 8px",
+                    whiteSpace: "nowrap",
+                    transition: "background 0.12s",
+                    fontFamily: "var(--font-body)",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--at-accent-light)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <Plus size={11} />
+                  Add column
+                  <ChevronDown size={10} />
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -845,8 +971,8 @@ export function SpreadsheetGrid({
                         <td
                           key={colIdx}
                           onClick={() => handleCellClick(rowIdx, colIdx)}
-                          onDoubleClick={() =>
-                            handleCellDoubleClick(rowIdx, colIdx)
+                          onDoubleClick={(e) =>
+                            handleCellDoubleClick(rowIdx, colIdx, e)
                           }
                           style={{
                             width: "120px",
@@ -879,28 +1005,90 @@ export function SpreadsheetGrid({
                             outlineOffset: "-1px",
                           }}
                         >
-                          {isEditing ? (
-                            <input
-                              ref={inlineInputRef}
-                              type="text"
-                              value={inlineEditValue}
-                              onChange={(e) => setInlineEditValue(e.target.value)}
-                              onBlur={handleInlineEditBlur}
-                              onKeyDown={handleInlineEditKeyDown}
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                border: "none",
-                                outline: "none",
-                                background: "transparent",
-                                fontSize: "12.5px",
-                                fontFamily: "var(--font-body)",
-                                padding: 0,
-                              }}
-                            />
-                          ) : (
-                            cell.value
-                          )}
+                          {(() => {
+                            const colType = colsMetadata[colIdx]?.type as ColumnType | undefined;
+                            const toggleCheckbox = () =>
+                              updateCellValue(rowIdx, colIdx, cell.value === "true" ? "false" : "true");
+
+                            // Checkboxes: always render as toggle, no text edit
+                            if (colType === "checkbox") {
+                              return (
+                                <TypedCellRenderer
+                                  value={cell.value}
+                                  type="checkbox"
+                                  onToggle={toggleCheckbox}
+                                />
+                              );
+                            }
+
+                            // Select/multi-select editing is handled by SelectCellEditor overlay
+                            if (isEditing && (colType === "select" || colType === "multi-select")) {
+                              return null;
+                            }
+
+                            // Date editing uses native date picker
+                            if (isEditing && colType === "date") {
+                              return (
+                                <input
+                                  ref={inlineInputRef}
+                                  type="date"
+                                  value={inlineEditValue}
+                                  onChange={(e) => setInlineEditValue(e.target.value)}
+                                  onBlur={handleInlineEditBlur}
+                                  onKeyDown={handleInlineEditKeyDown}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    border: "none",
+                                    outline: "none",
+                                    background: "transparent",
+                                    fontSize: "12px",
+                                    fontFamily: "var(--font-body)",
+                                    padding: 0,
+                                    cursor: "text",
+                                  }}
+                                />
+                              );
+                            }
+
+                            // Standard text editing
+                            if (isEditing) {
+                              return (
+                                <input
+                                  ref={inlineInputRef}
+                                  type="text"
+                                  value={inlineEditValue}
+                                  onChange={(e) => setInlineEditValue(e.target.value)}
+                                  onBlur={handleInlineEditBlur}
+                                  onKeyDown={handleInlineEditKeyDown}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    border: "none",
+                                    outline: "none",
+                                    background: "transparent",
+                                    fontSize: "12.5px",
+                                    fontFamily: "var(--font-body)",
+                                    padding: 0,
+                                  }}
+                                />
+                              );
+                            }
+
+                            // Typed display (everything except plain text/paragraph)
+                            if (colType && colType !== "text" && colType !== "paragraph") {
+                              return (
+                                <TypedCellRenderer
+                                  value={cell.value}
+                                  type={colType}
+                                  onToggle={toggleCheckbox}
+                                />
+                              );
+                            }
+
+                            // Default plain text
+                            return <>{cell.value}</>;
+                          })()}
                         </td>
                       );
                     })}
@@ -1046,6 +1234,41 @@ export function SpreadsheetGrid({
               ? () => onFilterColumn(colContextMenu.colIdx)
               : undefined
           }
+          toast={toast}
+        />
+      )}
+
+      {/* Select / Multi-select cell editor */}
+      {inlineEditingCell &&
+        selectEditorPos &&
+        (() => {
+          const colType = colsMetadata[inlineEditingCell.col]?.type as ColumnType | undefined;
+          if (colType !== "select" && colType !== "multi-select") return null;
+          return (
+            <SelectCellEditor
+              type={colType}
+              value={inlineEditValue}
+              position={selectEditorPos}
+              existingValues={getColumnUniqueValues(inlineEditingCell.col)}
+              onCommit={(val) => {
+                updateCellValue(inlineEditingCell.row, inlineEditingCell.col, val);
+                setInlineEditingCell(null);
+                setSelectEditorPos(null);
+              }}
+              onClose={() => {
+                setInlineEditingCell(null);
+                setSelectEditorPos(null);
+              }}
+            />
+          );
+        })()}
+
+      {/* Add column dropdown */}
+      {showAddMenu && (
+        <AddColumnMenu
+          position={addMenuPos}
+          onClose={() => setShowAddMenu(false)}
+          onAddColumn={addTypedColumn}
           toast={toast}
         />
       )}
