@@ -94,8 +94,6 @@ interface SpreadsheetGridProps {
   searchTerm?: string;
   /** Called when user chooses "Filter on this column" from the column context menu */
   onFilterColumn?: (colIdx: number) => void;
-  /** Called when user chooses "Run 1 cell" from the row context menu */
-  onRunRow?: (rowIdx: number) => void;
   /** Toast function from the parent's useToast hook */
   toast?: (type: ToastType, title: string, description?: string) => void;
 }
@@ -140,7 +138,6 @@ export function SpreadsheetGrid({
   filteredRowIndices: filteredRowIndicesArr,
   searchTerm = "",
   onFilterColumn,
-  onRunRow,
   toast,
 }: SpreadsheetGridProps) {
   const currentSheet = sheets[activeSheetIdx] || {
@@ -1023,7 +1020,6 @@ export function SpreadsheetGrid({
           activeSheetIdx={activeSheetIdx}
           onClose={() => setRowContextMenu(null)}
           onSheetsChange={onSheetsChange}
-          onRunRow={onRunRow}
           toast={toast}
         />
       )}

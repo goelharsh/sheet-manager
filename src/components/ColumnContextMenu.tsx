@@ -18,12 +18,11 @@ import {
   EyeOff,
   Trash2,
   ChevronRight,
-  Layers,
   ListFilter,
   ShuffleIcon,
+  Eraser,
 } from "lucide-react";
 import { ImportedSheet, ColumnMetadata } from "./SpreadsheetGrid";
-import { ToastType } from "./ui/Toast";
 import { ColumnType, ActiveSubmenu, SubmenuKey } from "./columnMenu/types";
 import { InsertSubmenu, ColorSubmenu, TypeSubmenu, COLUMN_TYPES } from "./columnMenu/Submenus";
 import {
@@ -35,8 +34,9 @@ import {
   deleteColumn,
   textToColumns,
 } from "./columnMenu/actions";
+import { ToastType } from "./ui/Toast";
 
-const MENU_WIDTH = 232;
+const MENU_WIDTH = 240;
 
 interface ColumnContextMenuProps {
   colIdx: number;
@@ -50,6 +50,99 @@ interface ColumnContextMenuProps {
   onFilterColumn?: () => void;
   toast?: (type: ToastType, title: string, description?: string) => void;
 }
+
+// ── Shared UI primitives ──────────────────────────────────────────────────────
+
+function Divider() {
+  return <div style={{ height: "1px", background: "var(--at-border-light)", margin: "3px 0" }} />;
+}
+
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <div
+      style={{
+        padding: "8px 14px 2px",
+        fontSize: "9.5px",
+        fontWeight: 700,
+        color: "var(--at-text-muted)",
+        textTransform: "uppercase",
+        letterSpacing: "0.09em",
+        userSelect: "none",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function MenuItem({
+  icon,
+  label,
+  danger,
+  right,
+  submenuKey,
+  activeSubmenu,
+  onHover,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  danger?: boolean;
+  right?: React.ReactNode;
+  submenuKey?: SubmenuKey;
+  activeSubmenu?: ActiveSubmenu | null;
+  onHover?: (key: SubmenuKey | null, e: React.MouseEvent) => void;
+  onClick?: () => void;
+}) {
+  const [hov, setHov] = useState(false);
+  const isActive = submenuKey != null && activeSubmenu?.key === submenuKey;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={(e) => {
+        setHov(true);
+        onHover?.(submenuKey ?? null, e);
+      }}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        padding: "0 14px",
+        height: "32px",
+        fontSize: "12.5px",
+        cursor: "pointer",
+        background: hov || isActive ? "var(--at-tab-hover)" : "transparent",
+        color: danger ? (hov || isActive ? "#b91c1c" : "#dc2626") : "var(--at-text)",
+        border: "none",
+        width: "100%",
+        textAlign: "left",
+        transition: "background 0.12s",
+        userSelect: "none",
+      }}
+    >
+      <span
+        style={{
+          color: danger ? "inherit" : "var(--at-text-muted)",
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        {icon}
+      </span>
+      <span style={{ flex: 1 }}>{label}</span>
+      {right}
+      {submenuKey && (
+        <ChevronRight size={12} style={{ color: "var(--at-text-muted)", flexShrink: 0 }} />
+      )}
+    </button>
+  );
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function ColumnContextMenu({
   colIdx,
@@ -66,8 +159,7 @@ export function ColumnContextMenu({
   const sheet = sheets[activeSheetIdx];
   const colMeta: ColumnMetadata = sheet?.cols?.[colIdx] || {};
   const currentType: ColumnType = (colMeta.type as ColumnType) || "text";
-  const typeLabel =
-    COLUMN_TYPES.find((t) => t.type === currentType)?.label ?? "Text";
+  const typeLabel = COLUMN_TYPES.find((t) => t.type === currentType)?.label ?? "Text";
 
   const [activeSubmenu, setActiveSubmenu] = useState<ActiveSubmenu | null>(null);
   const [onSubmenuPanel, setOnSubmenuPanel] = useState(false);
@@ -76,14 +168,11 @@ export function ColumnContextMenu({
   const [descModal, setDescModal] = useState(false);
   const [descValue, setDescValue] = useState(colMeta.description ?? "");
 
-  // Adjust menu position to avoid viewport overflow
   const menuX = Math.min(position.x, window.innerWidth - MENU_WIDTH - 8);
-  const menuY = Math.min(position.y, window.innerHeight - 540);
+  const menuY = Math.min(position.y, window.innerHeight - 560);
   const submenuX = menuX + MENU_WIDTH - 4;
 
-  const close = useCallback(() => {
-    onClose();
-  }, [onClose]);
+  const close = useCallback(() => onClose(), [onClose]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
@@ -91,92 +180,34 @@ export function ColumnContextMenu({
     return () => window.removeEventListener("keydown", onKey);
   }, [close]);
 
-  // Apply action and close menu
   const act = (fn: () => ImportedSheet[]) => {
     onSheetsChange(fn());
     close();
   };
 
-  // Trigger submenu on hover; clear when entering a non-submenu item
-  const openSubmenu = (key: SubmenuKey, e: React.MouseEvent) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setActiveSubmenu({ key, anchorY: rect.top });
-    setOnSubmenuPanel(false);
+  const handleHover = (key: SubmenuKey | null, e: React.MouseEvent) => {
+    if (key) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setActiveSubmenu({ key, anchorY: rect.top });
+      setOnSubmenuPanel(false);
+    } else if (!onSubmenuPanel) {
+      setActiveSubmenu(null);
+    }
   };
-  const clearSubmenu = () => {
-    if (!onSubmenuPanel) setActiveSubmenu(null);
-  };
-
-  const showSubmenu =
-    activeSubmenu !== null && (activeSubmenu !== null || onSubmenuPanel);
-
-  // ── Menu item helper ──────────────────────────────────────────────────────
-
-  function MenuItem({
-    id,
-    icon,
-    label,
-    danger,
-    arrow,
-    submenuKey,
-    onClick,
-  }: {
-    id: string;
-    icon: React.ReactNode;
-    label: string;
-    danger?: boolean;
-    arrow?: boolean;
-    submenuKey?: SubmenuKey;
-    onClick?: () => void;
-  }) {
-    const [hov, setHov] = useState(false);
-    const isActive = activeSubmenu?.key === submenuKey;
-    return (
-      <button
-        type="button"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "9px",
-          padding: "7px 14px",
-          fontSize: "12.5px",
-          cursor: "pointer",
-          background: hov || isActive ? "var(--at-tab-hover)" : "transparent",
-          color: danger
-            ? hov ? "#b91c1c" : "#dc2626"
-            : "var(--at-text)",
-          border: "none",
-          width: "100%",
-          textAlign: "left",
-          transition: "background 0.1s",
-          userSelect: "none",
-        }}
-        onMouseEnter={(e) => {
-          setHov(true);
-          if (submenuKey) openSubmenu(submenuKey, e);
-          else clearSubmenu();
-        }}
-        onMouseLeave={() => setHov(false)}
-        onClick={onClick}
-        data-id={id}
-      >
-        <span style={{ color: danger ? "inherit" : "var(--at-text-muted)", flexShrink: 0 }}>
-          {icon}
-        </span>
-        <span style={{ flex: 1 }}>{label}</span>
-        {arrow && <ChevronRight size={13} style={{ color: "var(--at-text-muted)" }} />}
-      </button>
-    );
-  }
-
-  const Divider = () => (
-    <div style={{ height: "1px", background: "var(--at-border-light)", margin: "4px 0" }} />
-  );
 
   const colName =
-    colMeta.name ||
-    sheet?.data?.[0]?.[colIdx]?.value ||
-    `Column ${colIdx + 1}`;
+    colMeta.name || sheet?.data?.[0]?.[colIdx]?.value || `Column ${colIdx + 1}`;
+
+  const showSubmenu = activeSubmenu !== null || onSubmenuPanel;
+
+  const wrapSubmenu = (node: React.ReactNode) => (
+    <div
+      onMouseEnter={() => setOnSubmenuPanel(true)}
+      onMouseLeave={() => { setOnSubmenuPanel(false); setActiveSubmenu(null); }}
+    >
+      {node}
+    </div>
+  );
 
   return (
     <>
@@ -187,7 +218,7 @@ export function ColumnContextMenu({
         onContextMenu={(e) => { e.preventDefault(); close(); }}
       />
 
-      {/* Main menu */}
+      {/* Menu */}
       <div
         style={{
           position: "fixed",
@@ -197,23 +228,24 @@ export function ColumnContextMenu({
           background: "var(--at-surface)",
           border: "1px solid var(--at-border)",
           borderRadius: "var(--radius-md)",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06)",
           zIndex: 1000,
-          padding: "6px 0",
+          padding: "4px 0",
           animation: "fadeIn 0.1s ease-out",
+          overflow: "hidden",
         }}
       >
-        {/* Column label header */}
+        {/* Column name header */}
         <div
           style={{
-            padding: "4px 14px 8px",
-            fontSize: "11px",
+            padding: "8px 14px 6px",
+            fontSize: "10.5px",
             fontWeight: 700,
             color: "var(--at-text-muted)",
             borderBottom: "1px solid var(--at-border-light)",
-            marginBottom: "4px",
+            marginBottom: "3px",
             textTransform: "uppercase",
-            letterSpacing: "0.05em",
+            letterSpacing: "0.07em",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -222,62 +254,129 @@ export function ColumnContextMenu({
           {colName}
         </div>
 
+        {/* Column actions */}
         <MenuItem
-          id="rename"
           icon={<Pencil size={13} />}
           label="Rename column"
+          onHover={handleHover}
           onClick={() => { onRenameStart(); close(); }}
         />
         <MenuItem
-          id="edit"
           icon={<Settings2 size={13} />}
           label="Edit column"
+          onHover={handleHover}
           onClick={() => { onEditColumn(); close(); }}
-        />
-        <MenuItem
-          id="insertLeft"
-          icon={<ArrowLeft size={13} />}
-          label="Insert column left"
-          arrow
-          submenuKey="insertLeft"
-        />
-        <MenuItem
-          id="insertRight"
-          icon={<ArrowRight size={13} />}
-          label="Insert column right"
-          arrow
-          submenuKey="insertRight"
         />
 
         <Divider />
 
+        {/* Structure */}
+        <SectionLabel>Structure</SectionLabel>
         <MenuItem
-          id="desc"
+          icon={<ArrowLeft size={13} />}
+          label="Insert column left"
+          submenuKey="insertLeft"
+          activeSubmenu={activeSubmenu}
+          onHover={handleHover}
+        />
+        <MenuItem
+          icon={<ArrowRight size={13} />}
+          label="Insert column right"
+          submenuKey="insertRight"
+          activeSubmenu={activeSubmenu}
+          onHover={handleHover}
+        />
+        <MenuItem
+          icon={<Copy size={13} />}
+          label="Duplicate column"
+          onHover={handleHover}
+          onClick={() => act(() => duplicateColumn(sheets, activeSheetIdx, colIdx))}
+        />
+
+        <Divider />
+
+        {/* Sort & Filter */}
+        <SectionLabel>Sort & Filter</SectionLabel>
+        <MenuItem
+          icon={<ArrowUp size={13} />}
+          label="Sort A → Z"
+          onHover={handleHover}
+          onClick={() => act(() => sortByColumn(sheets, activeSheetIdx, colIdx, "asc"))}
+        />
+        <MenuItem
+          icon={<ArrowDown size={13} />}
+          label="Sort Z → A"
+          onHover={handleHover}
+          onClick={() => act(() => sortByColumn(sheets, activeSheetIdx, colIdx, "desc"))}
+        />
+        <MenuItem
+          icon={<ShuffleIcon size={13} />}
+          label="Dedupe rows"
+          onHover={handleHover}
+          onClick={() => act(() => dedupeByColumn(sheets, activeSheetIdx, colIdx))}
+        />
+        <MenuItem
+          icon={<ListFilter size={13} />}
+          label="Filter on this column"
+          onHover={handleHover}
+          onClick={() => { onFilterColumn?.(); close(); }}
+        />
+
+        <Divider />
+
+        {/* Display */}
+        <SectionLabel>Display</SectionLabel>
+        <MenuItem
+          icon={<Palette size={13} />}
+          label="Change color"
+          submenuKey="changeColor"
+          activeSubmenu={activeSubmenu}
+          onHover={handleHover}
+        />
+        <MenuItem
+          icon={<Type size={13} />}
+          label={typeLabel}
+          submenuKey="columnType"
+          activeSubmenu={activeSubmenu}
+          onHover={handleHover}
+        />
+        <MenuItem
           icon={<Info size={13} />}
           label="Edit description"
+          onHover={handleHover}
           onClick={() => setDescModal(true)}
         />
         <MenuItem
-          id="color"
-          icon={<Palette size={13} />}
-          label="Change color"
-          arrow
-          submenuKey="changeColor"
+          icon={<Pin size={13} />}
+          label={colMeta.pinned ? "Unpin column" : "Pin column"}
+          onHover={handleHover}
+          onClick={() =>
+            act(() => updateColMeta(sheets, activeSheetIdx, colIdx, { pinned: !colMeta.pinned }))
+          }
         />
         <MenuItem
-          id="type"
-          icon={<Type size={13} />}
-          label={typeLabel}
-          arrow
-          submenuKey="columnType"
+          icon={<EyeOff size={13} />}
+          label="Hide column"
+          onHover={handleHover}
+          onClick={() =>
+            act(() => updateColMeta(sheets, activeSheetIdx, colIdx, { hidden: true }))
+          }
         />
 
         <Divider />
 
+        {/* Tools */}
+        <SectionLabel>Tools</SectionLabel>
         <MenuItem
-          id="usedIn"
+          icon={<Scissors size={13} />}
+          label="Text to columns"
+          onHover={handleHover}
+          onClick={() => setT2cModal(true)}
+        />
+        <MenuItem
           icon={<Link2 size={13} />}
           label="Used in..."
+          onHover={handleHover}
           onClick={() => {
             const count = (sheet.data.slice(1) || []).filter(
               (r) => (r[colIdx]?.value ?? "") !== ""
@@ -291,84 +390,40 @@ export function ColumnContextMenu({
           }}
         />
         <MenuItem
-          id="duplicate"
-          icon={<Copy size={13} />}
-          label="Duplicate"
-          onClick={() => act(() => duplicateColumn(sheets, activeSheetIdx, colIdx))}
-        />
-        <MenuItem
-          id="saveFunc"
-          icon={<Layers size={13} />}
-          label="Save as function"
-          onClick={() => { toast?.("info", "Coming soon", "Save as function is not yet available."); close(); }}
-        />
-        <MenuItem
-          id="textToCol"
-          icon={<Scissors size={13} />}
-          label="Text to columns"
-          onClick={() => setT2cModal(true)}
-        />
-        <MenuItem
-          id="sortAZ"
-          icon={<ArrowUp size={13} />}
-          label="Sort A → Z"
-          onClick={() => act(() => sortByColumn(sheets, activeSheetIdx, colIdx, "asc"))}
-        />
-        <MenuItem
-          id="sortZA"
-          icon={<ArrowDown size={13} />}
-          label="Sort Z → A"
-          onClick={() => act(() => sortByColumn(sheets, activeSheetIdx, colIdx, "desc"))}
+          icon={<Eraser size={13} />}
+          label="Clear column contents"
+          onHover={handleHover}
+          onClick={() => {
+            const next = sheets.map((s, si) => {
+              if (si !== activeSheetIdx) return s;
+              return {
+                ...s,
+                data: s.data.map((r, ri) =>
+                  ri === 0
+                    ? r.map((c) => ({ ...c }))
+                    : r.map((c, ci) => ci === colIdx ? { ...c, value: "" } : { ...c })
+                ),
+              };
+            });
+            onSheetsChange(next);
+            close();
+          }}
         />
 
         <Divider />
 
         <MenuItem
-          id="dedupe"
-          icon={<ShuffleIcon size={13} />}
-          label="Dedupe"
-          onClick={() => act(() => dedupeByColumn(sheets, activeSheetIdx, colIdx))}
-        />
-        <MenuItem
-          id="filter"
-          icon={<ListFilter size={13} />}
-          label="Filter on this column"
-          onClick={() => { onFilterColumn?.(); close(); }}
-        />
-
-        <Divider />
-
-        <MenuItem
-          id="pin"
-          icon={<Pin size={13} />}
-          label={colMeta.pinned ? "Unpin column" : "Pin column"}
-          onClick={() =>
-            act(() => updateColMeta(sheets, activeSheetIdx, colIdx, { pinned: !colMeta.pinned }))
-          }
-        />
-        <MenuItem
-          id="hide"
-          icon={<EyeOff size={13} />}
-          label="Hide"
-          onClick={() =>
-            act(() => updateColMeta(sheets, activeSheetIdx, colIdx, { hidden: true }))
-          }
-        />
-        <MenuItem
-          id="delete"
           icon={<Trash2 size={13} />}
-          label="Delete"
+          label="Delete column"
           danger
+          onHover={handleHover}
           onClick={() => act(() => deleteColumn(sheets, activeSheetIdx, colIdx))}
         />
       </div>
 
       {/* Submenus */}
-      {showSubmenu && activeSubmenu?.key === "insertLeft" && (
-        <div
-          onMouseEnter={() => setOnSubmenuPanel(true)}
-          onMouseLeave={() => { setOnSubmenuPanel(false); setActiveSubmenu(null); }}
-        >
+      {showSubmenu && activeSubmenu?.key === "insertLeft" &&
+        wrapSubmenu(
           <InsertSubmenu
             x={submenuX}
             y={activeSubmenu.anchorY}
@@ -377,13 +432,9 @@ export function ColumnContextMenu({
               act(() => insertColumns(sheets, activeSheetIdx, colIdx, count, false))
             }
           />
-        </div>
-      )}
-      {showSubmenu && activeSubmenu?.key === "insertRight" && (
-        <div
-          onMouseEnter={() => setOnSubmenuPanel(true)}
-          onMouseLeave={() => { setOnSubmenuPanel(false); setActiveSubmenu(null); }}
-        >
+        )}
+      {showSubmenu && activeSubmenu?.key === "insertRight" &&
+        wrapSubmenu(
           <InsertSubmenu
             x={submenuX}
             y={activeSubmenu.anchorY}
@@ -392,13 +443,9 @@ export function ColumnContextMenu({
               act(() => insertColumns(sheets, activeSheetIdx, colIdx, count, true))
             }
           />
-        </div>
-      )}
-      {showSubmenu && activeSubmenu?.key === "changeColor" && (
-        <div
-          onMouseEnter={() => setOnSubmenuPanel(true)}
-          onMouseLeave={() => { setOnSubmenuPanel(false); setActiveSubmenu(null); }}
-        >
+        )}
+      {showSubmenu && activeSubmenu?.key === "changeColor" &&
+        wrapSubmenu(
           <ColorSubmenu
             x={submenuX}
             y={activeSubmenu.anchorY}
@@ -407,13 +454,9 @@ export function ColumnContextMenu({
               act(() => updateColMeta(sheets, activeSheetIdx, colIdx, { color }))
             }
           />
-        </div>
-      )}
-      {showSubmenu && activeSubmenu?.key === "columnType" && (
-        <div
-          onMouseEnter={() => setOnSubmenuPanel(true)}
-          onMouseLeave={() => { setOnSubmenuPanel(false); setActiveSubmenu(null); }}
-        >
+        )}
+      {showSubmenu && activeSubmenu?.key === "columnType" &&
+        wrapSubmenu(
           <TypeSubmenu
             x={submenuX}
             y={activeSubmenu.anchorY}
@@ -422,8 +465,7 @@ export function ColumnContextMenu({
               act(() => updateColMeta(sheets, activeSheetIdx, colIdx, { type }))
             }
           />
-        </div>
-      )}
+        )}
 
       {/* Text to columns modal */}
       {t2cModal && (
@@ -431,7 +473,7 @@ export function ColumnContextMenu({
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.3)",
+            background: "rgba(0,0,0,0.35)",
             zIndex: 1002,
             display: "flex",
             alignItems: "center",
@@ -449,19 +491,22 @@ export function ColumnContextMenu({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ margin: "0 0 16px", fontSize: "14px", fontWeight: 700 }}>
+            <h3 style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700 }}>
               Text to columns
             </h3>
+            <p style={{ margin: "0 0 14px", fontSize: "12px", color: "var(--at-text-muted)" }}>
+              Split cell values by a delimiter into adjacent columns.
+            </p>
             <label
               style={{
-                fontSize: "12px",
+                fontSize: "11.5px",
                 fontWeight: 600,
                 color: "var(--at-text-muted)",
                 display: "block",
                 marginBottom: "6px",
               }}
             >
-              Delimiter
+              Delimiter character
             </label>
             <input
               autoFocus
@@ -470,24 +515,16 @@ export function ColumnContextMenu({
               placeholder='e.g.  ,  or  ;  or  |'
               style={{
                 width: "100%",
-                padding: "7px 10px",
+                padding: "8px 10px",
                 border: "1px solid var(--at-border)",
                 borderRadius: "var(--radius-sm)",
                 fontSize: "13px",
                 boxSizing: "border-box",
                 outline: "none",
+                fontFamily: "monospace",
               }}
             />
-            <p
-              style={{
-                fontSize: "11px",
-                color: "var(--at-text-soft)",
-                margin: "6px 0 16px",
-              }}
-            >
-              Splits cell values by this character and fills adjacent columns.
-            </p>
-            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "18px" }}>
               <button
                 onClick={() => setT2cModal(false)}
                 style={{
@@ -519,7 +556,7 @@ export function ColumnContextMenu({
                   fontWeight: 600,
                 }}
               >
-                Split
+                Split column
               </button>
             </div>
           </div>
@@ -532,7 +569,7 @@ export function ColumnContextMenu({
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.3)",
+            background: "rgba(0,0,0,0.35)",
             zIndex: 1002,
             display: "flex",
             alignItems: "center",
@@ -550,9 +587,12 @@ export function ColumnContextMenu({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ margin: "0 0 16px", fontSize: "14px", fontWeight: 700 }}>
+            <h3 style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700 }}>
               Column description
             </h3>
+            <p style={{ margin: "0 0 14px", fontSize: "12px", color: "var(--at-text-muted)" }}>
+              Shown as a tooltip on the column header.
+            </p>
             <textarea
               autoFocus
               value={descValue}
@@ -571,7 +611,9 @@ export function ColumnContextMenu({
                 outline: "none",
               }}
             />
-            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "14px" }}>
+            <div
+              style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "14px" }}
+            >
               <button
                 onClick={() => setDescModal(false)}
                 style={{
