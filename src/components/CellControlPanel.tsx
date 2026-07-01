@@ -26,6 +26,8 @@ import {
   ImportedSheet,
   getColLabel,
 } from "./SpreadsheetGrid";
+import { Trigger } from "./TriggersConsole";
+import { TriggerEventPicker } from "./TriggerEventPicker";
 
 interface CellControlPanelProps {
   selectedCell: { row: number; col: number };
@@ -33,6 +35,10 @@ interface CellControlPanelProps {
   activeSheetIdx: number;
   onSheetsChange: (updatedSheets: ImportedSheet[]) => void;
   onCloseCellPanel: () => void;
+  triggers: Trigger[];
+  onAddTrigger: (trigger: Omit<Trigger, "id"> & { id?: string }) => void;
+  onToggleTrigger: (id: string) => void;
+  onDeleteTrigger: (id: string) => void;
 }
 
 const TEXT_COLORS = [
@@ -63,6 +69,10 @@ export function CellControlPanel({
   activeSheetIdx,
   onSheetsChange,
   onCloseCellPanel,
+  triggers,
+  onAddTrigger,
+  onToggleTrigger,
+  onDeleteTrigger,
 }: CellControlPanelProps) {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const currentSheet = sheets[activeSheetIdx];
@@ -742,6 +752,18 @@ export function CellControlPanel({
             Clear Cell Value & Styles
           </button>
         </div>
+      </CollapsibleSection>
+
+      {/* Accordion 3: Triggers & Automations */}
+      <CollapsibleSection title="Triggers & Automations" defaultOpen={false}>
+        <TriggerEventPicker
+          sheets={sheets}
+          activeSheetIdx={activeSheetIdx}
+          triggers={triggers}
+          onAddTrigger={onAddTrigger}
+          onToggleTrigger={onToggleTrigger}
+          onDeleteTrigger={onDeleteTrigger}
+        />
       </CollapsibleSection>
 
       {showClearConfirm && (
