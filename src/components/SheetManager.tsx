@@ -842,6 +842,7 @@ export function SheetManager() {
             onExportExcel={handleExportExcel}
             filteredRowIndices={filteredRowIndices}
             searchTerm={searchTerm}
+            toast={toast}
           />
         );
       };

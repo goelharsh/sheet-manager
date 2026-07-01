@@ -15,7 +15,19 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
+  Hash,
+  CheckSquare,
+  Link2,
+  Calendar,
+  AtSign,
+  DollarSign,
+  List,
+  Circle,
 } from "lucide-react";
+import { ColumnContextMenu } from "./ColumnContextMenu";
+import { RowContextMenu } from "./RowContextMenu";
+import { ColumnType } from "./columnMenu/types";
+import { ToastType } from "./ui/Toast";
 
 export interface CellStyle {
   bold?: boolean;
@@ -35,8 +47,15 @@ export interface RowMetadata {
   hidden?: boolean;
 }
 
+export type { ColumnType };
+
 export interface ColumnMetadata {
   hidden?: boolean;
+  name?: string;
+  type?: ColumnType;
+  color?: string;
+  description?: string;
+  pinned?: boolean;
 }
 
 export interface SheetWebhookSettings {
@@ -73,6 +92,12 @@ interface SpreadsheetGridProps {
   filteredRowIndices?: number[];
   /** Term to highlight in cells */
   searchTerm?: string;
+  /** Called when user chooses "Filter on this column" from the column context menu */
+  onFilterColumn?: (colIdx: number) => void;
+  /** Called when user chooses "Run 1 cell" from the row context menu */
+  onRunRow?: (rowIdx: number) => void;
+  /** Toast function from the parent's useToast hook */
+  toast?: (type: ToastType, title: string, description?: string) => void;
 }
 
 // Convert 0 -> A, 1 -> B, etc.
@@ -84,6 +109,22 @@ export function getColLabel(colIdx: number): string {
     temp = Math.floor(temp / 26) - 1;
   }
   return label;
+}
+
+function TypeIcon({ type }: { type?: ColumnType }) {
+  const s = 10;
+  switch (type) {
+    case "number":      return <Hash size={s} />;
+    case "checkbox":    return <CheckSquare size={s} />;
+    case "url":         return <Link2 size={s} />;
+    case "date":        return <Calendar size={s} />;
+    case "email":       return <AtSign size={s} />;
+    case "currency":    return <DollarSign size={s} />;
+    case "paragraph":   return <AlignLeft size={s} />;
+    case "select":      return <Circle size={s} />;
+    case "multi-select": return <List size={s} />;
+    default:            return <span style={{ fontSize: "10px", fontWeight: 700 }}>T</span>;
+  }
 }
 
 export function SpreadsheetGrid({
@@ -98,6 +139,9 @@ export function SpreadsheetGrid({
   isSyncing = false,
   filteredRowIndices: filteredRowIndicesArr,
   searchTerm = "",
+  onFilterColumn,
+  onRunRow,
+  toast,
 }: SpreadsheetGridProps) {
   const currentSheet = sheets[activeSheetIdx] || {
     name: "Sheet 1",
@@ -175,6 +219,40 @@ export function SpreadsheetGrid({
   const [inlineEditValue, setInlineEditValue] = useState("");
   const inlineInputRef = useRef<HTMLInputElement>(null);
 
+  // Column context menu state
+  const [colContextMenu, setColContextMenu] = useState<{
+    colIdx: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Row context menu state
+  const [rowContextMenu, setRowContextMenu] = useState<{
+    rowIdx: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Column rename state
+  const [renamingColIdx, setRenamingColIdx] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  const commitRename = (colIdx: number, name: string) => {
+    const updatedSheets = [...sheets];
+    const sheet = { ...updatedSheets[activeSheetIdx] };
+    const colCount = sheet.data[0]?.length || 0;
+    const newCols = sheet.cols
+      ? sheet.cols.map((c) => ({ ...c }))
+      : Array.from({ length: colCount }, () => ({} as ColumnMetadata));
+    while (newCols.length <= colIdx) newCols.push({} as ColumnMetadata);
+    newCols[colIdx] = { ...newCols[colIdx], name: name.trim() || undefined };
+    sheet.cols = newCols;
+    updatedSheets[activeSheetIdx] = sheet;
+    onSheetsChange(updatedSheets);
+    setRenamingColIdx(null);
+  };
+
   // Sync formula bar input value with selected cell value
   useEffect(() => {
     if (selectedCell && selectedCell.col !== -1) {
@@ -194,6 +272,14 @@ export function SpreadsheetGrid({
       inlineInputRef.current.select();
     }
   }, [inlineEditingCell]);
+
+  // Focus rename input when rename starts
+  useEffect(() => {
+    if (renamingColIdx !== null && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingColIdx]);
 
   const handleCellClick = (row: number, col: number) => {
     onSelectedCellChange({ row, col });
@@ -608,16 +694,25 @@ export function SpreadsheetGrid({
               {/* Column Headers */}
               {gridData[0]?.map((_, colIdx) => {
                 if (isColHidden(colIdx)) return null;
+                const meta = colsMetadata[colIdx] || {};
+                const headerBg = meta.color || "#f4f4f2";
+                const headerName = meta.name || getColLabel(colIdx);
+                const isRenaming = renamingColIdx === colIdx;
                 return (
                   <th
                     key={colIdx}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setColContextMenu({ colIdx, x: e.clientX, y: e.clientY });
+                    }}
+                    title={meta.description || undefined}
                     style={{
                       position: "sticky",
                       top: 0,
                       zIndex: 20,
                       width: "120px",
-                      height: "25px",
-                      background: "#f4f4f2",
+                      height: "28px",
+                      background: headerBg,
                       borderRight: "1px solid var(--at-border)",
                       borderBottom: "1px solid var(--at-border)",
                       fontSize: "11px",
@@ -626,9 +721,61 @@ export function SpreadsheetGrid({
                       textAlign: "center",
                       verticalAlign: "middle",
                       userSelect: "none",
+                      cursor: "context-menu",
+                      padding: 0,
                     }}
                   >
-                    {getColLabel(colIdx)}
+                    {isRenaming ? (
+                      <input
+                        ref={renameInputRef}
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => commitRename(colIdx, renameValue)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitRename(colIdx, renameValue);
+                          if (e.key === "Escape") setRenamingColIdx(null);
+                        }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          border: "none",
+                          background: "transparent",
+                          textAlign: "center",
+                          fontSize: "11px",
+                          fontFamily: "var(--font-body)",
+                          fontWeight: 600,
+                          outline: "2px solid var(--at-accent)",
+                          outlineOffset: "-2px",
+                          padding: "0 4px",
+                          color: "var(--at-text)",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    ) : (
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "3px",
+                          padding: "0 6px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <span style={{ color: "var(--at-text-soft)", flexShrink: 0, display: "flex" }}>
+                          <TypeIcon type={meta.type as ColumnType | undefined} />
+                        </span>
+                        <span
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {headerName}
+                        </span>
+                      </span>
+                    )}
                   </th>
                 );
               })}
@@ -655,6 +802,10 @@ export function SpreadsheetGrid({
                     {/* Row Header */}
                     <td
                       onClick={() => onSelectedCellChange({ row: rowIdx, col: -1 })}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setRowContextMenu({ rowIdx, x: e.clientX, y: e.clientY });
+                      }}
                       style={{
                         position: "sticky",
                         left: 0,
@@ -862,6 +1013,46 @@ export function SpreadsheetGrid({
           </button>
         </div>
       </div>
+
+      {/* Row context menu */}
+      {rowContextMenu && (
+        <RowContextMenu
+          rowIdx={rowContextMenu.rowIdx}
+          position={{ x: rowContextMenu.x, y: rowContextMenu.y }}
+          sheets={sheets}
+          activeSheetIdx={activeSheetIdx}
+          onClose={() => setRowContextMenu(null)}
+          onSheetsChange={onSheetsChange}
+          onRunRow={onRunRow}
+          toast={toast}
+        />
+      )}
+
+      {/* Column context menu (portal-style via position:fixed) */}
+      {colContextMenu && (
+        <ColumnContextMenu
+          colIdx={colContextMenu.colIdx}
+          position={{ x: colContextMenu.x, y: colContextMenu.y }}
+          sheets={sheets}
+          activeSheetIdx={activeSheetIdx}
+          onClose={() => setColContextMenu(null)}
+          onSheetsChange={onSheetsChange}
+          onRenameStart={() => {
+            const currentName = colsMetadata[colContextMenu.colIdx]?.name ?? "";
+            setRenameValue(currentName);
+            setRenamingColIdx(colContextMenu.colIdx);
+          }}
+          onEditColumn={() => {
+            onSelectedCellChange({ row: 0, col: colContextMenu.colIdx });
+          }}
+          onFilterColumn={
+            onFilterColumn
+              ? () => onFilterColumn(colContextMenu.colIdx)
+              : undefined
+          }
+          toast={toast}
+        />
+      )}
     </div>
   );
 }
