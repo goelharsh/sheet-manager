@@ -26,6 +26,7 @@ interface AddColumnMenuProps {
   position: { x: number; y: number };
   onClose: () => void;
   onAddColumn: (type: ColumnType, name: string) => void;
+  onOpenFormulaPanel?: () => void;
   toast?: (type: ToastType, title: string, description?: string) => void;
 }
 
@@ -37,10 +38,6 @@ const ADVANCED_ITEMS = [
   { icon: <Settings2 size={13} />,     label: "Functions" },
   { icon: <MessageSquare size={13} />, label: "Message" },
   { icon: <GitBranch size={13} />,     label: "Waterfall" },
-  {
-    icon: <span style={{ fontSize: "12px", fontWeight: 700, fontFamily: "serif" }}>ƒ</span>,
-    label: "Formula",
-  },
   { icon: <span style={{ fontSize: "12px" }}>⇅</span>, label: "Merge columns" },
 ];
 
@@ -160,7 +157,7 @@ function MenuItem({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function AddColumnMenu({ position, onClose, onAddColumn, toast }: AddColumnMenuProps) {
+export function AddColumnMenu({ position, onClose, onAddColumn, onOpenFormulaPanel, toast }: AddColumnMenuProps) {
   const menuX = Math.min(position.x, window.innerWidth - MENU_WIDTH - 8);
   // Pin to max available height so items never overflow off-screen
   const maxH = window.innerHeight - position.y - 12;
@@ -196,8 +193,16 @@ export function AddColumnMenu({ position, onClose, onAddColumn, toast }: AddColu
       >
         {/* Scrollable body */}
         <div style={{ overflowY: "auto", padding: "4px 0", flex: 1 }}>
-          {/* ── Advanced (coming soon) ─────────────────────── */}
+          {/* ── Advanced ──────────────────────────────────── */}
           <SectionLabel>Advanced</SectionLabel>
+          <MenuItem
+            icon={<span style={{ fontSize: "12px", fontWeight: 700, fontFamily: "serif" }}>ƒ</span>}
+            label="Formula"
+            onClick={() => {
+              onClose();
+              onOpenFormulaPanel?.();
+            }}
+          />
           {ADVANCED_ITEMS.map(({ icon, label }) => (
             <MenuItem
               key={label}

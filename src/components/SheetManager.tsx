@@ -9,6 +9,7 @@ import { ToastContainer, useToast } from "@/components/ui/Toast";
 import { useSheetsApi, CreatedSheet } from "@/hooks/useSheetsApi";
 import { SpreadsheetGrid, ImportedSheet, getColLabel } from "@/components/SpreadsheetGrid";
 import { CellControlPanel } from "@/components/CellControlPanel";
+import { FormulaGeneratorPanel } from "@/components/FormulaGeneratorPanel";
 import { TriggersConsole, Trigger, LogEntry } from "@/components/TriggersConsole";
 import { CertificateMerge } from "@/components/steps/CertificateMerge";
 import { FilterToolbar, ViewType } from "@/components/FilterToolbar";
@@ -34,6 +35,7 @@ import {
   CloudUpload,
   RefreshCw,
   Award,
+  FunctionSquare,
 } from "lucide-react";
 
 type Step = 1 | 2 | 3 | 4;
@@ -80,7 +82,7 @@ export function SheetManager() {
     row: number;
     col: number;
   } | null>(null);
-  const [sidebarMode, setSidebarMode] = useState<"step" | "cell">("step");
+  const [sidebarMode, setSidebarMode] = useState<"step" | "cell" | "formula">("step");
   const [importedFileName, setImportedFileName] = useState<string>("");
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -732,6 +734,21 @@ export function SheetManager() {
       );
     }
 
+    if (sidebarMode === "formula" && importedSheets) {
+      return (
+        <FormulaGeneratorPanel
+          sheets={importedSheets}
+          activeSheetIdx={activeSheetIdx}
+          onSheetsChange={handleSheetsChange}
+          onClose={() => {
+            setSidebarMode("step");
+            setSidebarOpen(false);
+          }}
+          toast={toast}
+        />
+      );
+    }
+
     if (step === 1) {
       return (
         <CreateSheet
@@ -843,6 +860,12 @@ export function SheetManager() {
             filteredRowIndices={filteredRowIndices}
             searchTerm={searchTerm}
             toast={toast}
+            onOpenFormulaPanel={() => {
+              setSidebarMode("formula");
+              setSidebarOpen(true);
+              setIsSidebarCollapsed(false);
+              setSelectedCell(null);
+            }}
           />
         );
       };
@@ -1278,6 +1301,20 @@ export function SheetManager() {
             {importedSheets && (
               <>
                 <button
+                  onClick={() => {
+                    setSidebarMode("formula");
+                    setSidebarOpen(true);
+                    setIsSidebarCollapsed(false);
+                    setSelectedCell(null);
+                  }}
+                  className={`at-topbar-action-btn at-btn-outline${sidebarMode === "formula" && sidebarOpen ? " at-btn-outline--active" : ""}`}
+                  title="Open formula generator"
+                  style={sidebarMode === "formula" && sidebarOpen && !isSidebarCollapsed ? { background: "var(--at-accent-light)", borderColor: "var(--at-accent)", color: "var(--at-accent)" } : {}}
+                >
+                  <FunctionSquare size={12} />
+                  <span className="at-btn-text">Formula</span>
+                </button>
+                <button
                   onClick={handleExportExcel}
                   className="at-topbar-action-btn at-btn-outline"
                   title="Export to Excel file"
@@ -1335,6 +1372,8 @@ export function SheetManager() {
                     if (sidebarMode === "cell") {
                       setSidebarMode("step");
                       setSelectedCell(null);
+                    } else if (sidebarMode === "formula") {
+                      setSidebarMode("step");
                     }
                   }
                 } else {
@@ -1345,9 +1384,11 @@ export function SheetManager() {
             >
               {sidebarOpen && !isSidebarCollapsed
                 ? "Close panel"
-                : sidebarMode === "cell"
-                  ? "Cell Editor"
-                  : currentStepMeta.label}
+                : sidebarMode === "formula"
+                  ? "ƒ Formula"
+                  : sidebarMode === "cell"
+                    ? "Cell Editor"
+                    : currentStepMeta.label}
             </button>
           </div>
         </header>
@@ -1431,10 +1472,14 @@ export function SheetManager() {
               if (sidebarMode === "cell") {
                 setSidebarMode("step");
                 setSelectedCell(null);
+              } else if (sidebarMode === "formula") {
+                setSidebarMode("step");
               }
             }}
             title={
-              sidebarMode === "cell" && selectedCell
+              sidebarMode === "formula"
+                ? "ƒ Formula generator"
+                : sidebarMode === "cell" && selectedCell
                 ? `Cell ${String.fromCharCode(65 + selectedCell.col)}${selectedCell.row + 1} Editor`
                 : currentStepMeta.sidebarTitle
             }

@@ -102,6 +102,8 @@ interface SpreadsheetGridProps {
   onFilterColumn?: (colIdx: number) => void;
   /** Toast function from the parent's useToast hook */
   toast?: (type: ToastType, title: string, description?: string) => void;
+  /** Opens the formula generator sidebar panel */
+  onOpenFormulaPanel?: () => void;
 }
 
 // Convert 0 -> A, 1 -> B, etc.
@@ -147,6 +149,7 @@ export function SpreadsheetGrid({
   searchTerm = "",
   onFilterColumn,
   toast,
+  onOpenFormulaPanel,
 }: SpreadsheetGridProps) {
   const currentSheet = sheets[activeSheetIdx] || {
     name: "Sheet 1",
@@ -1269,6 +1272,7 @@ export function SpreadsheetGrid({
           position={addMenuPos}
           onClose={() => setShowAddMenu(false)}
           onAddColumn={addTypedColumn}
+          onOpenFormulaPanel={onOpenFormulaPanel}
           toast={toast}
         />
       )}
