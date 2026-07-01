@@ -15,6 +15,7 @@ import {
   ArrowUp,
   ArrowDown,
   Pin,
+  Eye,
   EyeOff,
   Trash2,
   ChevronRight,
@@ -195,6 +196,19 @@ export function ColumnContextMenu({
     }
   };
 
+  const hiddenColCount = (sheet?.cols ?? []).filter((c) => c.hidden).length;
+
+  const handleShowAllHiddenCols = () => {
+    const next = sheets.map((s, si) => {
+      if (si !== activeSheetIdx) return s;
+      const colCount = s.data[0]?.length ?? 0;
+      const newCols = (s.cols ?? Array.from({ length: colCount }, () => ({}))).map((c) => ({ ...c, hidden: false }));
+      return { ...s, cols: newCols };
+    });
+    onSheetsChange(next);
+    close();
+  };
+
   const colName =
     colMeta.name || sheet?.data?.[0]?.[colIdx]?.value || `Column ${colIdx + 1}`;
 
@@ -362,6 +376,14 @@ export function ColumnContextMenu({
             act(() => updateColMeta(sheets, activeSheetIdx, colIdx, { hidden: true }))
           }
         />
+        {hiddenColCount > 0 && (
+          <MenuItem
+            icon={<Eye size={13} />}
+            label={`Show ${hiddenColCount} hidden column${hiddenColCount === 1 ? "" : "s"}`}
+            onHover={handleHover}
+            onClick={handleShowAllHiddenCols}
+          />
+        )}
 
         <Divider />
 

@@ -8,6 +8,7 @@ import {
   ArrowUp,
   ArrowDown,
   Eraser,
+  Eye,
   EyeOff,
   Trash2,
   Check,
@@ -163,8 +164,10 @@ export function RowContextMenu({
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [cutState, setCutState] = useState<"idle" | "cut">("idle");
 
+  const hiddenRowCount = (sheet.rows ?? []).filter((r) => r.hidden).length;
+
   // Estimate menu height for viewport clamping
-  const MENU_HEIGHT = 310;
+  const MENU_HEIGHT = 310 + (hiddenRowCount > 0 ? 36 : 0);
   const menuX = Math.min(position.x, window.innerWidth - MENU_WIDTH - 8);
   const menuY = Math.min(position.y, window.innerHeight - MENU_HEIGHT - 8);
 
@@ -301,6 +304,16 @@ export function RowContextMenu({
     close();
   };
 
+  const handleShowAllHiddenRows = () => {
+    const next = sheets.map((s, si) => {
+      if (si !== activeSheetIdx) return s;
+      const newRows = (s.rows ?? s.data.map(() => ({}))).map((r) => ({ ...r, hidden: false }));
+      return { ...s, rows: newRows };
+    });
+    onSheetsChange(next);
+    close();
+  };
+
   const handleDeleteRow = () => {
     if (sheet.data.length <= 1) {
       toast?.("warning", "Cannot delete", "The sheet must have at least one row.");
@@ -418,6 +431,13 @@ export function RowContextMenu({
           label="Hide row"
           onClick={handleHideRow}
         />
+        {hiddenRowCount > 0 && (
+          <MenuItem
+            icon={<Eye size={13} />}
+            label={`Show ${hiddenRowCount} hidden row${hiddenRowCount === 1 ? "" : "s"}`}
+            onClick={handleShowAllHiddenRows}
+          />
+        )}
 
         <Divider />
 
