@@ -3134,6 +3134,21 @@ body {
   color: #cbd5e1;
 }
 
+.tg-event-badge--rows_deleted {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.tg-event-badge--http_trigger {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+}
+
+.tg-event-badge--periodic_trigger {
+  background: rgba(6, 182, 212, 0.15);
+  color: #22d3ee;
+}
+
 .tg-status-indicator {
   display: inline-flex;
   align-items: center;

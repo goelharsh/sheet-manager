@@ -30,24 +30,36 @@ import {
 } from "lucide-react";
 import { getColLabel, ImportedSheet, SheetApiSettings, SheetWebhookSettings } from "./SpreadsheetGrid";
 import { ClickAnalyticsPanel } from "@/components/ClickAnalyticsPanel";
+import { useTriggerForm } from "@/components/hooks/useTriggerForm";
 
 export interface Trigger {
   id: string;
   name: string;
-  type: "row_added" | "cell_changed";
+  type: "row_added" | "cell_changed" | "rows_deleted" | "http_trigger" | "periodic_trigger";
   isActive: boolean;
   sheetName: string;
   targetColumn?: number; // -1 means "Any Column"
   actionType: "auto_fill" | "log_only";
   actionColumn?: number;
   actionValueFormula?: string;
+  actionRow?: number; // fixed target row for http_trigger/periodic_trigger auto_fill (no natural "current row")
+  intervalMinutes?: number; // periodic_trigger only
+  lastRunAt?: string; // periodic_trigger only
+  secretKey?: string; // http_trigger inbound auth secret
 }
 
 export interface LogEntry {
   id: string;
   timestamp: string;
   triggerName?: string;
-  eventType: "row_added" | "cell_changed" | "manual_edit" | "system";
+  eventType:
+    | "row_added"
+    | "cell_changed"
+    | "manual_edit"
+    | "system"
+    | "rows_deleted"
+    | "http_trigger"
+    | "periodic_trigger";
   sheetName: string;
   details: string;
   status: "success" | "warning" | "info";
@@ -61,7 +73,7 @@ interface TriggersConsoleProps {
   dbProvider: string;
   dbDetails: string;
   isTestingConnection: boolean;
-  onAddTrigger: (trigger: Omit<Trigger, "id">) => void;
+  onAddTrigger: (trigger: Omit<Trigger, "id"> & { id?: string }) => void;
   onToggleTrigger: (id: string) => void;
   onDeleteTrigger: (id: string) => void;
   onClearLogs: () => void;
@@ -106,18 +118,25 @@ export function TriggersConsole({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
 
-  // New Trigger Form State
-  const [triggerName, setTriggerName] = useState("");
-  const [eventType, setEventType] = useState<"row_added" | "cell_changed">(
-    "cell_changed",
-  );
-  const [sheetName, setSheetName] = useState("All");
-  const [targetColumn, setTargetColumn] = useState<number>(-1); // -1 is Any Column
-  const [actionType, setActionType] = useState<"auto_fill" | "log_only">(
-    "log_only",
-  );
-  const [actionColumn, setActionColumn] = useState<number>(0);
-  const [actionValue, setActionValue] = useState("");
+  // New Trigger Form State (shared with the sidebar TriggerEventPicker)
+  const {
+    triggerName,
+    setTriggerName,
+    eventType,
+    setEventType,
+    sheetName,
+    setSheetName,
+    targetColumn,
+    setTargetColumn,
+    actionType,
+    setActionType,
+    actionColumn,
+    setActionColumn,
+    actionValue,
+    setActionValue,
+    buildPayload,
+    reset: resetTriggerForm,
+  } = useTriggerForm();
 
   const currentSheet = sheets[activeSheetIdx];
   const colCount = currentSheet?.data[0]?.length || 4;
@@ -460,22 +479,11 @@ else:
 
   const handleSubmitTrigger = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!triggerName.trim()) return;
+    const payload = buildPayload();
+    if (!payload) return;
 
-    onAddTrigger({
-      name: triggerName,
-      type: eventType,
-      isActive: true,
-      sheetName,
-      targetColumn: eventType === "cell_changed" ? targetColumn : undefined,
-      actionType,
-      actionColumn: actionType === "auto_fill" ? actionColumn : undefined,
-      actionValueFormula: actionType === "auto_fill" ? actionValue : undefined,
-    });
-
-    // Reset Form
-    setTriggerName("");
-    setActionValue("");
+    onAddTrigger(payload);
+    resetTriggerForm();
   };
 
   const filteredLogs = logs.filter((log) => {
@@ -603,6 +611,9 @@ else:
                       <option value="all">All Events</option>
                       <option value="cell_changed">Cell Changes</option>
                       <option value="row_added">Row Additions</option>
+                      <option value="rows_deleted">Row Deletions</option>
+                      <option value="http_trigger">HTTP Triggers</option>
+                      <option value="periodic_trigger">Periodic Triggers</option>
                       <option value="manual_edit">Manual Edits</option>
                       <option value="system">System Logs</option>
                     </select>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Bold,
   Italic,
@@ -15,10 +15,27 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
-  Square,
+  Hash,
   CheckSquare,
+  Link2,
+  Calendar,
+  AtSign,
+  DollarSign,
+  List,
+  Circle,
+  ChevronDown,
+  User,
+  Image as ImageIcon,
+  Square,
   Play,
 } from "lucide-react";
+import { ColumnContextMenu } from "./ColumnContextMenu";
+import { RowContextMenu } from "./RowContextMenu";
+import { AddColumnMenu } from "./AddColumnMenu";
+import { TypedCellRenderer } from "./columnMenu/TypedCellRenderer";
+import { SelectCellEditor } from "./columnMenu/SelectCellEditor";
+import { ColumnType } from "./columnMenu/types";
+import { ToastType } from "./ui/Toast";
 
 export interface CellStyle {
   bold?: boolean;
@@ -38,8 +55,15 @@ export interface RowMetadata {
   hidden?: boolean;
 }
 
+export type { ColumnType };
+
 export interface ColumnMetadata {
   hidden?: boolean;
+  name?: string;
+  type?: ColumnType;
+  color?: string;
+  description?: string;
+  pinned?: boolean;
 }
 
 export interface SheetWebhookSettings {
@@ -76,6 +100,12 @@ interface SpreadsheetGridProps {
   filteredRowIndices?: number[];
   /** Term to highlight in cells */
   searchTerm?: string;
+  /** Called when user chooses "Filter on this column" from the column context menu */
+  onFilterColumn?: (colIdx: number) => void;
+  /** Toast function from the parent's useToast hook */
+  toast?: (type: ToastType, title: string, description?: string) => void;
+  /** Opens the formula generator sidebar panel */
+  onOpenFormulaPanel?: () => void;
   /** Called when the user clicks the eye icon on a row */
   onViewRow?: (rowIdx: number) => void;
 }
@@ -91,6 +121,24 @@ export function getColLabel(colIdx: number): string {
   return label;
 }
 
+function TypeIcon({ type }: { type?: ColumnType }) {
+  const s = 10;
+  switch (type) {
+    case "number":       return <Hash size={s} />;
+    case "currency":     return <DollarSign size={s} />;
+    case "checkbox":     return <CheckSquare size={s} />;
+    case "url":          return <Link2 size={s} />;
+    case "date":         return <Calendar size={s} />;
+    case "email":        return <AtSign size={s} />;
+    case "image":        return <ImageIcon size={s} />;
+    case "paragraph":    return <AlignLeft size={s} />;
+    case "select":       return <Circle size={s} />;
+    case "multi-select": return <List size={s} />;
+    case "assigned-to":  return <User size={s} />;
+    default:             return <span style={{ fontSize: "10px", fontWeight: 700 }}>T</span>;
+  }
+}
+
 export function SpreadsheetGrid({
   sheets,
   activeSheetIdx,
@@ -103,6 +151,9 @@ export function SpreadsheetGrid({
   isSyncing = false,
   filteredRowIndices: filteredRowIndicesArr,
   searchTerm = "",
+  onFilterColumn,
+  toast,
+  onOpenFormulaPanel,
   onViewRow,
 }: SpreadsheetGridProps) {
   const currentSheet = sheets[activeSheetIdx] || {
@@ -181,6 +232,82 @@ export function SpreadsheetGrid({
   const [inlineEditValue, setInlineEditValue] = useState("");
   const inlineInputRef = useRef<HTMLInputElement>(null);
 
+  // Column context menu state
+  const [colContextMenu, setColContextMenu] = useState<{
+    colIdx: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Row context menu state
+  const [rowContextMenu, setRowContextMenu] = useState<{
+    rowIdx: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Column rename state
+  const [renamingColIdx, setRenamingColIdx] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // Add column menu state
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const addColBtnRef = useRef<HTMLButtonElement>(null);
+  const [addMenuPos, setAddMenuPos] = useState({ x: 0, y: 0 });
+
+  // Select / multi-select cell editor state
+  const [selectEditorPos, setSelectEditorPos] = useState<{ x: number; y: number } | null>(null);
+
+  const commitRename = (colIdx: number, name: string) => {
+    const updatedSheets = [...sheets];
+    const sheet = { ...updatedSheets[activeSheetIdx] };
+    const colCount = sheet.data[0]?.length || 0;
+    const newCols = sheet.cols
+      ? sheet.cols.map((c) => ({ ...c }))
+      : Array.from({ length: colCount }, () => ({} as ColumnMetadata));
+    while (newCols.length <= colIdx) newCols.push({} as ColumnMetadata);
+    newCols[colIdx] = { ...newCols[colIdx], name: name.trim() || undefined };
+    sheet.cols = newCols;
+    updatedSheets[activeSheetIdx] = sheet;
+    onSheetsChange(updatedSheets);
+    setRenamingColIdx(null);
+  };
+
+  const addTypedColumn = useCallback(
+    (type: ColumnType, name: string) => {
+      const updatedSheets = [...sheets];
+      const sheet = { ...updatedSheets[activeSheetIdx] };
+      const sheetData = sheet.data.map((r) => [...r.map((c) => ({ ...c })), { value: "", style: {} }]);
+      const colCount = sheetData[0].length;
+      const newCols: ColumnMetadata[] = sheet.cols
+        ? [...sheet.cols.map((c) => ({ ...c }))]
+        : Array.from({ length: colCount - 1 }, () => ({} as ColumnMetadata));
+      while (newCols.length < colCount - 1) newCols.push({} as ColumnMetadata);
+      newCols.push({ type, name });
+      sheet.data = sheetData;
+      sheet.cols = newCols;
+      updatedSheets[activeSheetIdx] = sheet;
+      onSheetsChange(updatedSheets);
+    },
+    [sheets, activeSheetIdx, onSheetsChange]
+  );
+
+  const getColumnUniqueValues = useCallback(
+    (colIdx: number): string[] => {
+      const seen = new Set<string>();
+      for (let r = 1; r < gridData.length; r++) {
+        const val = gridData[r]?.[colIdx]?.value ?? "";
+        val.split(",").forEach((v) => {
+          const t = v.trim();
+          if (t) seen.add(t);
+        });
+      }
+      return Array.from(seen);
+    },
+    [gridData]
+  );
+
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
 
@@ -210,15 +337,47 @@ export function SpreadsheetGrid({
     }
   }, [inlineEditingCell]);
 
+  // Focus rename input when rename starts
+  useEffect(() => {
+    if (renamingColIdx !== null && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingColIdx]);
+
   const handleCellClick = (row: number, col: number) => {
     onSelectedCellChange({ row, col });
     setInlineEditingCell(null);
   };
 
-  const handleCellDoubleClick = (row: number, col: number) => {
+  const handleCellDoubleClick = (
+    row: number,
+    col: number,
+    e: React.MouseEvent<HTMLTableCellElement>
+  ) => {
+    const colType = colsMetadata[col]?.type as ColumnType | undefined;
+    // Checkboxes toggle on single click — no inline edit
+    if (colType === "checkbox") return;
+
     onSelectedCellChange({ row, col });
     setInlineEditingCell({ row, col });
-    setInlineEditValue(gridData[row]?.[col]?.value ?? "");
+
+    const rawVal = gridData[row]?.[col]?.value ?? "";
+
+    if (colType === "select" || colType === "multi-select") {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setSelectEditorPos({ x: rect.left, y: rect.bottom });
+      setInlineEditValue(rawVal);
+    } else if (colType === "date") {
+      // Normalise to YYYY-MM-DD so <input type="date"> can read it
+      const d = new Date(rawVal);
+      const iso = !isNaN(d.getTime())
+        ? d.toISOString().split("T")[0]
+        : rawVal;
+      setInlineEditValue(iso);
+    } else {
+      setInlineEditValue(rawVal);
+    }
   };
 
   const updateCellValue = (row: number, col: number, newValue: string) => {
@@ -623,16 +782,25 @@ export function SpreadsheetGrid({
               {/* Column Headers */}
               {gridData[0]?.map((_, colIdx) => {
                 if (isColHidden(colIdx)) return null;
+                const meta = colsMetadata[colIdx] || {};
+                const headerBg = meta.color || "#f4f4f2";
+                const headerName = meta.name || getColLabel(colIdx);
+                const isRenaming = renamingColIdx === colIdx;
                 return (
                   <th
                     key={colIdx}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setColContextMenu({ colIdx, x: e.clientX, y: e.clientY });
+                    }}
+                    title={meta.description || undefined}
                     style={{
                       position: "sticky",
                       top: 0,
                       zIndex: 20,
                       width: "160px",
                       height: "28px",
-                      background: "#f4f4f2",
+                      background: headerBg,
                       borderRight: "1px solid var(--at-border)",
                       borderBottom: "1px solid var(--at-border)",
                       fontSize: "11px",
@@ -641,12 +809,116 @@ export function SpreadsheetGrid({
                       textAlign: "center",
                       verticalAlign: "middle",
                       userSelect: "none",
+                      cursor: "context-menu",
+                      padding: 0,
                     }}
                   >
-                    {getColLabel(colIdx)}
+                    {isRenaming ? (
+                      <input
+                        ref={renameInputRef}
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => commitRename(colIdx, renameValue)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitRename(colIdx, renameValue);
+                          if (e.key === "Escape") setRenamingColIdx(null);
+                        }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          border: "none",
+                          background: "transparent",
+                          textAlign: "center",
+                          fontSize: "11px",
+                          fontFamily: "var(--font-body)",
+                          fontWeight: 600,
+                          outline: "2px solid var(--at-accent)",
+                          outlineOffset: "-2px",
+                          padding: "0 4px",
+                          color: "var(--at-text)",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    ) : (
+                      <span
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "3px",
+                          padding: "0 6px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <span style={{ color: "var(--at-text-soft)", flexShrink: 0, display: "flex" }}>
+                          <TypeIcon type={meta.type as ColumnType | undefined} />
+                        </span>
+                        <span
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {headerName}
+                        </span>
+                      </span>
+                    )}
                   </th>
                 );
               })}
+
+              {/* Add Column Button */}
+              <th
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 20,
+                  width: "140px",
+                  height: "28px",
+                  background: "#f4f4f2",
+                  borderRight: "1px solid var(--at-border)",
+                  borderBottom: "1px solid var(--at-border)",
+                  padding: 0,
+                  verticalAlign: "middle",
+                }}
+              >
+                <button
+                  ref={addColBtnRef}
+                  type="button"
+                  onClick={() => {
+                    if (addColBtnRef.current) {
+                      const rect = addColBtnRef.current.getBoundingClientRect();
+                      setAddMenuPos({ x: rect.left, y: rect.bottom + 4 });
+                    }
+                    setShowAddMenu(true);
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "4px",
+                    width: "100%",
+                    height: "100%",
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--at-accent)",
+                    fontSize: "11.5px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    padding: "0 8px",
+                    whiteSpace: "nowrap",
+                    transition: "background 0.12s",
+                    fontFamily: "var(--font-body)",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--at-accent-light)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <Plus size={11} />
+                  Add column
+                  <ChevronDown size={10} />
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -675,6 +947,10 @@ export function SpreadsheetGrid({
                       onMouseEnter={() => setHoveredRow(rowIdx)}
                       onMouseLeave={() => setHoveredRow(null)}
                       onClick={() => onSelectedCellChange({ row: rowIdx, col: -1 })}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setRowContextMenu({ rowIdx, x: e.clientX, y: e.clientY });
+                      }}
                       style={{
                         position: "sticky",
                         left: 0,
@@ -878,8 +1154,8 @@ export function SpreadsheetGrid({
                         <td
                           key={colIdx}
                           onClick={() => handleCellClick(rowIdx, colIdx)}
-                          onDoubleClick={() =>
-                            handleCellDoubleClick(rowIdx, colIdx)
+                          onDoubleClick={(e) =>
+                            handleCellDoubleClick(rowIdx, colIdx, e)
                           }
                           style={{
                             width: "160px",
@@ -914,28 +1190,90 @@ export function SpreadsheetGrid({
                             outlineOffset: "-1px",
                           }}
                         >
-                          {isEditing ? (
-                            <input
-                              ref={inlineInputRef}
-                              type="text"
-                              value={inlineEditValue}
-                              onChange={(e) => setInlineEditValue(e.target.value)}
-                              onBlur={handleInlineEditBlur}
-                              onKeyDown={handleInlineEditKeyDown}
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                border: "none",
-                                outline: "none",
-                                background: "transparent",
-                                fontSize: "12.5px",
-                                fontFamily: "var(--font-body)",
-                                padding: 0,
-                              }}
-                            />
-                          ) : (
-                            cell.value
-                          )}
+                          {(() => {
+                            const colType = colsMetadata[colIdx]?.type as ColumnType | undefined;
+                            const toggleCheckbox = () =>
+                              updateCellValue(rowIdx, colIdx, cell.value === "true" ? "false" : "true");
+
+                            // Checkboxes: always render as toggle, no text edit
+                            if (colType === "checkbox") {
+                              return (
+                                <TypedCellRenderer
+                                  value={cell.value}
+                                  type="checkbox"
+                                  onToggle={toggleCheckbox}
+                                />
+                              );
+                            }
+
+                            // Select/multi-select editing is handled by SelectCellEditor overlay
+                            if (isEditing && (colType === "select" || colType === "multi-select")) {
+                              return null;
+                            }
+
+                            // Date editing uses native date picker
+                            if (isEditing && colType === "date") {
+                              return (
+                                <input
+                                  ref={inlineInputRef}
+                                  type="date"
+                                  value={inlineEditValue}
+                                  onChange={(e) => setInlineEditValue(e.target.value)}
+                                  onBlur={handleInlineEditBlur}
+                                  onKeyDown={handleInlineEditKeyDown}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    border: "none",
+                                    outline: "none",
+                                    background: "transparent",
+                                    fontSize: "12px",
+                                    fontFamily: "var(--font-body)",
+                                    padding: 0,
+                                    cursor: "text",
+                                  }}
+                                />
+                              );
+                            }
+
+                            // Standard text editing
+                            if (isEditing) {
+                              return (
+                                <input
+                                  ref={inlineInputRef}
+                                  type="text"
+                                  value={inlineEditValue}
+                                  onChange={(e) => setInlineEditValue(e.target.value)}
+                                  onBlur={handleInlineEditBlur}
+                                  onKeyDown={handleInlineEditKeyDown}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    border: "none",
+                                    outline: "none",
+                                    background: "transparent",
+                                    fontSize: "12.5px",
+                                    fontFamily: "var(--font-body)",
+                                    padding: 0,
+                                  }}
+                                />
+                              );
+                            }
+
+                            // Typed display (everything except plain text/paragraph)
+                            if (colType && colType !== "text" && colType !== "paragraph") {
+                              return (
+                                <TypedCellRenderer
+                                  value={cell.value}
+                                  type={colType}
+                                  onToggle={toggleCheckbox}
+                                />
+                              );
+                            }
+
+                            // Default plain text
+                            return <>{cell.value}</>;
+                          })()}
                         </td>
                       );
                     })}
@@ -1045,6 +1383,81 @@ export function SpreadsheetGrid({
           </button>
         </div>
       </div>
+
+      {/* Row context menu */}
+      {rowContextMenu && (
+        <RowContextMenu
+          rowIdx={rowContextMenu.rowIdx}
+          position={{ x: rowContextMenu.x, y: rowContextMenu.y }}
+          sheets={sheets}
+          activeSheetIdx={activeSheetIdx}
+          onClose={() => setRowContextMenu(null)}
+          onSheetsChange={onSheetsChange}
+          toast={toast}
+        />
+      )}
+
+      {/* Column context menu (portal-style via position:fixed) */}
+      {colContextMenu && (
+        <ColumnContextMenu
+          colIdx={colContextMenu.colIdx}
+          position={{ x: colContextMenu.x, y: colContextMenu.y }}
+          sheets={sheets}
+          activeSheetIdx={activeSheetIdx}
+          onClose={() => setColContextMenu(null)}
+          onSheetsChange={onSheetsChange}
+          onRenameStart={() => {
+            const currentName = colsMetadata[colContextMenu.colIdx]?.name ?? "";
+            setRenameValue(currentName);
+            setRenamingColIdx(colContextMenu.colIdx);
+          }}
+          onEditColumn={() => {
+            onSelectedCellChange({ row: 0, col: colContextMenu.colIdx });
+          }}
+          onFilterColumn={
+            onFilterColumn
+              ? () => onFilterColumn(colContextMenu.colIdx)
+              : undefined
+          }
+          toast={toast}
+        />
+      )}
+
+      {/* Select / Multi-select cell editor */}
+      {inlineEditingCell &&
+        selectEditorPos &&
+        (() => {
+          const colType = colsMetadata[inlineEditingCell.col]?.type as ColumnType | undefined;
+          if (colType !== "select" && colType !== "multi-select") return null;
+          return (
+            <SelectCellEditor
+              type={colType}
+              value={inlineEditValue}
+              position={selectEditorPos}
+              existingValues={getColumnUniqueValues(inlineEditingCell.col)}
+              onCommit={(val) => {
+                updateCellValue(inlineEditingCell.row, inlineEditingCell.col, val);
+                setInlineEditingCell(null);
+                setSelectEditorPos(null);
+              }}
+              onClose={() => {
+                setInlineEditingCell(null);
+                setSelectEditorPos(null);
+              }}
+            />
+          );
+        })()}
+
+      {/* Add column dropdown */}
+      {showAddMenu && (
+        <AddColumnMenu
+          position={addMenuPos}
+          onClose={() => setShowAddMenu(false)}
+          onAddColumn={addTypedColumn}
+          onOpenFormulaPanel={onOpenFormulaPanel}
+          toast={toast}
+        />
+      )}
     </div>
   );
 }

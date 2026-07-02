@@ -9,6 +9,7 @@ import { ToastContainer, useToast } from "@/components/ui/Toast";
 import { useSheetsApi, CreatedSheet } from "@/hooks/useSheetsApi";
 import { SpreadsheetGrid, ImportedSheet, getColLabel } from "@/components/SpreadsheetGrid";
 import { CellControlPanel } from "@/components/CellControlPanel";
+import { FormulaGeneratorPanel } from "@/components/FormulaGeneratorPanel";
 import { RowDetailPanel } from "@/components/RowDetailPanel";
 import { TriggersConsole, Trigger, LogEntry } from "@/components/TriggersConsole";
 import { CertificateMerge } from "@/components/steps/CertificateMerge";
@@ -35,6 +36,7 @@ import {
   CloudUpload,
   RefreshCw,
   Award,
+  FunctionSquare,
 } from "lucide-react";
 
 type Step = 1 | 2 | 3 | 4;
@@ -81,7 +83,7 @@ export function SheetManager() {
     row: number;
     col: number;
   } | null>(null);
-  const [sidebarMode, setSidebarMode] = useState<"step" | "cell" | "row">("step");
+  const [sidebarMode, setSidebarMode] = useState<"step" | "cell" | "formula" | "row">("step");
   const [selectedRowIdx, setSelectedRowIdx] = useState<number | null>(null);
   const [importedFileName, setImportedFileName] = useState<string>("");
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -224,6 +226,148 @@ export function SheetManager() {
     loadDbState();
   }, []);
 
+  // Refs kept in sync so the periodic-trigger interval below always reads fresh
+  // state without needing to tear down and recreate the interval on every render.
+  const importedSheetsRef = React.useRef(importedSheets);
+  React.useEffect(() => {
+    importedSheetsRef.current = importedSheets;
+  }, [importedSheets]);
+
+  const triggersRef = React.useRef(triggers);
+  React.useEffect(() => {
+    triggersRef.current = triggers;
+  }, [triggers]);
+
+  const logsRef = React.useRef(logs);
+  React.useEffect(() => {
+    logsRef.current = logs;
+  }, [logs]);
+
+  const activeSheetIdxRef = React.useRef(activeSheetIdx);
+  React.useEffect(() => {
+    activeSheetIdxRef.current = activeSheetIdx;
+  }, [activeSheetIdx]);
+
+  // Periodic trigger scheduler. Client-side only (no server cron in this project) —
+  // fires while this browser tab has the app open, checked every 30s against each
+  // trigger's own intervalMinutes/lastRunAt.
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      const currentTriggers = triggersRef.current;
+      const duePeriodic = currentTriggers.filter((t) => {
+        if (!t.isActive || t.type !== "periodic_trigger" || !t.intervalMinutes) return false;
+        const last = t.lastRunAt ? new Date(t.lastRunAt).getTime() : 0;
+        return Date.now() - last >= t.intervalMinutes * 60000;
+      });
+      if (duePeriodic.length === 0) return;
+
+      const currentSheets = importedSheetsRef.current;
+      if (!currentSheets) return;
+
+      let newLogs: LogEntry[] = [...logsRef.current];
+      let sheetsModified = false;
+      const nextSheets = [...currentSheets];
+
+      const updatedTriggers = currentTriggers.map((t) => {
+        if (!duePeriodic.includes(t)) return t;
+
+        const targetIdx =
+          t.sheetName === "All"
+            ? activeSheetIdxRef.current
+            : nextSheets.findIndex((s) => s.name === t.sheetName);
+        const targetSheet = targetIdx >= 0 ? nextSheets[targetIdx] : null;
+
+        const runLog: LogEntry = {
+          id: `log-tr-${Date.now()}-${Math.random()}`,
+          timestamp: new Date().toLocaleTimeString(),
+          triggerName: t.name,
+          eventType: "periodic_trigger",
+          sheetName: targetSheet?.name || t.sheetName,
+          details: `Executing periodic trigger "${t.name}" (every ${t.intervalMinutes}m).`,
+          status: "success",
+        };
+
+        if (
+          t.actionType === "auto_fill" &&
+          targetSheet &&
+          t.actionRow !== undefined &&
+          t.actionColumn !== undefined
+        ) {
+          const template = t.actionValueFormula || "";
+          const val = template
+            .replace("{{timestamp}}", new Date().toLocaleTimeString())
+            .replace("{{row}}", String(t.actionRow + 1));
+
+          const updatedData = targetSheet.data.map((rowArr) => rowArr.map((c) => ({ ...c })));
+          if (updatedData[t.actionRow]) {
+            updatedData[t.actionRow][t.actionColumn] = {
+              ...updatedData[t.actionRow][t.actionColumn],
+              value: val,
+            };
+            nextSheets[targetIdx] = { ...targetSheet, data: updatedData };
+            sheetsModified = true;
+            runLog.details += ` Auto-filled ${getColLabel(t.actionColumn)}${t.actionRow + 1} with "${val}".`;
+          }
+        } else {
+          runLog.details += ` Logged event.`;
+        }
+
+        newLogs = [runLog, ...newLogs];
+        return { ...t, lastRunAt: new Date().toISOString() };
+      });
+
+      setTriggers(updatedTriggers);
+      setLogs(newLogs);
+      if (sheetsModified) {
+        setImportedSheets(nextSheets);
+      }
+      saveDbState(sheetsModified ? nextSheets : currentSheets, updatedTriggers, newLogs);
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Live-sync poll for trigger/log activity fired from outside this tab (e.g. an
+  // HTTP trigger POST). Only merges `triggers`/`logs` from the server — never
+  // `sheets` — so in-progress cell edits are never clobbered. Scoped to run only
+  // while the cell sidebar (where the trigger picker lives) is open, matching the
+  // existing scoped-polling precedent in TriggersConsole's webhook simulator tab.
+  React.useEffect(() => {
+    if (sidebarMode !== "cell") return;
+
+    let active = true;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/db");
+        if (!res.ok || !active) return;
+        const data = await res.json();
+
+        if (Array.isArray(data.triggers)) {
+          setTriggers((prevLocal) => {
+            const serverIds = new Set(data.triggers.map((t: Trigger) => t.id));
+            const localOnly = prevLocal.filter((t) => !serverIds.has(t.id));
+            return [...data.triggers, ...localOnly];
+          });
+        }
+        if (Array.isArray(data.logs)) {
+          setLogs((prevLocal) => {
+            const serverIds = new Set(data.logs.map((l: LogEntry) => l.id));
+            const localOnly = prevLocal.filter((l) => !serverIds.has(l.id));
+            return [...localOnly, ...data.logs];
+          });
+        }
+      } catch (err) {
+        console.warn("Failed to poll trigger/log activity:", err);
+      }
+    };
+
+    const interval = setInterval(poll, 5000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [sidebarMode]);
+
   const handleUpdateSheetApiSettings = (sheetIdx: number, settings: any) => {
     if (!importedSheets) return;
     const nextSheets = [...importedSheets];
@@ -248,7 +392,7 @@ export function SheetManager() {
 
   const triggerWebhook = async (
     sheet: ImportedSheet,
-    eventType: "cell_changed" | "row_added",
+    eventType: "cell_changed" | "row_added" | "rows_deleted",
     changeData: any,
     currentSheetsList: ImportedSheet[] | null
   ) => {
@@ -514,6 +658,58 @@ export function SheetManager() {
           }
         }
       }
+
+      // 3. Check Rows Deleted Trigger
+      else if (nextRowCount < prevRowCount) {
+        let detectedDeletedRow = -1;
+        for (let r = 0; r < prevRowCount; r++) {
+          if (r >= nextRowCount) {
+            detectedDeletedRow = r;
+            break;
+          }
+          const prevValues = prevSheet.data[r].map((c) => c.value).join("|");
+          const nextValues = activeSheet.data[r].map((c) => c.value).join("|");
+          if (prevValues !== nextValues) {
+            detectedDeletedRow = r;
+            break;
+          }
+        }
+        if (detectedDeletedRow === -1) {
+          detectedDeletedRow = prevRowCount - 1;
+        }
+
+        const deleteLog: LogEntry = {
+          id: `log-rowdel-${Date.now()}`,
+          timestamp: new Date().toLocaleTimeString(),
+          eventType: "rows_deleted",
+          sheetName: activeSheet.name,
+          details: `Row ${detectedDeletedRow + 1} was deleted.`,
+          status: "warning",
+        };
+        newLogs = [deleteLog, ...newLogs];
+
+        const activeDeleteTriggers = triggers.filter(
+          (t) => t.isActive && t.type === "rows_deleted" && (t.sheetName === "All" || t.sheetName === activeSheet.name)
+        );
+
+        activeDeleteTriggers.forEach((trigger) => {
+          const runLog: LogEntry = {
+            id: `log-tr-${Date.now()}-${Math.random()}`,
+            timestamp: new Date().toLocaleTimeString(),
+            triggerName: trigger.name,
+            eventType: "rows_deleted",
+            sheetName: activeSheet.name,
+            details: `Executing trigger "${trigger.name}". Logged deletion of row ${detectedDeletedRow + 1}.`,
+            status: "success",
+          };
+          newLogs = [runLog, ...newLogs];
+        });
+
+        triggerWebhook(activeSheet, "rows_deleted", {
+          rowIndex: detectedDeletedRow,
+          details: `Row ${detectedDeletedRow + 1} was deleted.`
+        }, finalSheets);
+      }
     } catch (err) {
       console.error("Error executing triggers:", err);
     } finally {
@@ -527,10 +723,10 @@ export function SheetManager() {
     saveDbState(sheetModified ? finalSheets : nextSheets, triggers, newLogs);
   };
 
-  const handleAddTrigger = (newTr: Omit<Trigger, "id">) => {
+  const handleAddTrigger = (newTr: Omit<Trigger, "id"> & { id?: string }) => {
     const trigger: Trigger = {
       ...newTr,
-      id: `trigger-${Date.now()}`,
+      id: newTr.id || `trigger-${Date.now()}`,
     };
     const updated = [...triggers, trigger];
     setTriggers(updated);
@@ -752,6 +948,25 @@ export function SheetManager() {
             setSidebarMode("step");
             setSelectedCell(null);
           }}
+          triggers={triggers}
+          onAddTrigger={handleAddTrigger}
+          onToggleTrigger={handleToggleTrigger}
+          onDeleteTrigger={handleDeleteTrigger}
+        />
+      );
+    }
+
+    if (sidebarMode === "formula" && importedSheets) {
+      return (
+        <FormulaGeneratorPanel
+          sheets={importedSheets}
+          activeSheetIdx={activeSheetIdx}
+          onSheetsChange={handleSheetsChange}
+          onClose={() => {
+            setSidebarMode("step");
+            setSidebarOpen(false);
+          }}
+          toast={toast}
         />
       );
     }
@@ -866,6 +1081,13 @@ export function SheetManager() {
             onExportExcel={handleExportExcel}
             filteredRowIndices={filteredRowIndices}
             searchTerm={searchTerm}
+            toast={toast}
+            onOpenFormulaPanel={() => {
+              setSidebarMode("formula");
+              setSidebarOpen(true);
+              setIsSidebarCollapsed(false);
+              setSelectedCell(null);
+            }}
             onViewRow={handleViewRow}
           />
         );
@@ -1302,6 +1524,20 @@ export function SheetManager() {
             {importedSheets && (
               <>
                 <button
+                  onClick={() => {
+                    setSidebarMode("formula");
+                    setSidebarOpen(true);
+                    setIsSidebarCollapsed(false);
+                    setSelectedCell(null);
+                  }}
+                  className={`at-topbar-action-btn at-btn-outline${sidebarMode === "formula" && sidebarOpen ? " at-btn-outline--active" : ""}`}
+                  title="Open formula generator"
+                  style={sidebarMode === "formula" && sidebarOpen && !isSidebarCollapsed ? { background: "var(--at-accent-light)", borderColor: "var(--at-accent)", color: "var(--at-accent)" } : {}}
+                >
+                  <FunctionSquare size={12} />
+                  <span className="at-btn-text">Formula</span>
+                </button>
+                <button
                   onClick={handleExportExcel}
                   className="at-topbar-action-btn at-btn-outline"
                   title="Export to Excel file"
@@ -1359,6 +1595,8 @@ export function SheetManager() {
                     if (sidebarMode === "cell") {
                       setSidebarMode("step");
                       setSelectedCell(null);
+                    } else if (sidebarMode === "formula") {
+                      setSidebarMode("step");
                     } else if (sidebarMode === "row") {
                       setSidebarMode("step");
                       setSelectedRowIdx(null);
@@ -1372,11 +1610,13 @@ export function SheetManager() {
             >
               {sidebarOpen && !isSidebarCollapsed
                 ? "Close panel"
-                : sidebarMode === "cell"
-                  ? "Cell Editor"
-                  : sidebarMode === "row"
-                  ? "Row Details"
-                  : currentStepMeta.label}
+                : sidebarMode === "formula"
+                  ? "ƒ Formula"
+                  : sidebarMode === "cell"
+                    ? "Cell Editor"
+                    : sidebarMode === "row"
+                      ? "Row Details"
+                      : currentStepMeta.label}
             </button>
           </div>
         </header>
@@ -1460,13 +1700,17 @@ export function SheetManager() {
               if (sidebarMode === "cell") {
                 setSidebarMode("step");
                 setSelectedCell(null);
+              } else if (sidebarMode === "formula") {
+                setSidebarMode("step");
               } else if (sidebarMode === "row") {
                 setSidebarMode("step");
                 setSelectedRowIdx(null);
               }
             }}
             title={
-              sidebarMode === "row" && selectedRowIdx !== null
+              sidebarMode === "formula"
+                ? "ƒ Formula generator"
+                : sidebarMode === "row" && selectedRowIdx !== null
                 ? `Row ${selectedRowIdx + 1} Details`
                 : sidebarMode === "cell" && selectedCell
                 ? `Cell ${String.fromCharCode(65 + selectedCell.col)}${selectedCell.row + 1} Editor`

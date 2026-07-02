@@ -15,8 +15,6 @@ import {
   RotateCcw,
   Type,
   Binary,
-  Eye,
-  EyeOff,
   X,
   Sliders,
   Globe,
@@ -26,11 +24,11 @@ import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import {
   CellData,
   CellStyle,
-  ColumnMetadata,
   ImportedSheet,
-  RowMetadata,
   getColLabel,
 } from "./SpreadsheetGrid";
+import { Trigger } from "./TriggersConsole";
+import { TriggerEventPicker } from "./TriggerEventPicker";
 import { HttpApiPanel } from "./HttpApiPanel";
 import { JsonViewer } from "./JsonViewer";
 
@@ -40,6 +38,10 @@ interface CellControlPanelProps {
   activeSheetIdx: number;
   onSheetsChange: (updatedSheets: ImportedSheet[]) => void;
   onCloseCellPanel: () => void;
+  triggers: Trigger[];
+  onAddTrigger: (trigger: Omit<Trigger, "id"> & { id?: string }) => void;
+  onToggleTrigger: (id: string) => void;
+  onDeleteTrigger: (id: string) => void;
 }
 
 const TEXT_COLORS = [
@@ -70,6 +72,10 @@ export function CellControlPanel({
   activeSheetIdx,
   onSheetsChange,
   onCloseCellPanel,
+  triggers,
+  onAddTrigger,
+  onToggleTrigger,
+  onDeleteTrigger,
 }: CellControlPanelProps) {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const currentSheet = sheets[activeSheetIdx];
@@ -190,38 +196,6 @@ export function CellControlPanel({
     newColsMeta.splice(targetIdx, 0, { hidden: false });
     sheet.cols = newColsMeta;
 
-    updatedSheets[activeSheetIdx] = sheet;
-    onSheetsChange(updatedSheets);
-  };
-
-  const toggleRowVisibility = (rowIdx: number) => {
-    const updatedSheets = [...sheets];
-    const sheet = { ...updatedSheets[activeSheetIdx] };
-    const rowCount = sheet.data.length;
-    const newRowsMeta: RowMetadata[] = sheet.rows
-      ? [...sheet.rows]
-      : Array(rowCount)
-          .fill(null)
-          .map(() => ({}));
-    const isHidden = !!newRowsMeta[rowIdx]?.hidden;
-    newRowsMeta[rowIdx] = { ...newRowsMeta[rowIdx], hidden: !isHidden };
-    sheet.rows = newRowsMeta;
-    updatedSheets[activeSheetIdx] = sheet;
-    onSheetsChange(updatedSheets);
-  };
-
-  const toggleColVisibility = (colIdx: number) => {
-    const updatedSheets = [...sheets];
-    const sheet = { ...updatedSheets[activeSheetIdx] };
-    const colCount = sheet.data[0]?.length || 0;
-    const newColsMeta: ColumnMetadata[] = sheet.cols
-      ? [...sheet.cols]
-      : Array(colCount)
-          .fill(null)
-          .map(() => ({}));
-    const isHidden = !!newColsMeta[colIdx]?.hidden;
-    newColsMeta[colIdx] = { ...newColsMeta[colIdx], hidden: !isHidden };
-    sheet.cols = newColsMeta;
     updatedSheets[activeSheetIdx] = sheet;
     onSheetsChange(updatedSheets);
   };
@@ -573,161 +547,7 @@ export function CellControlPanel({
         );
       })()}
 
-      {/* Accordion 2: Visibility Settings */}
-      <CollapsibleSection title="Visibility Settings" defaultOpen={false}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          <span className="field-label" style={{ margin: 0 }}>Hide Commands</span>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-            <button
-              onClick={() => toggleRowVisibility(row)}
-              className="tbl-ctrl-btn"
-              style={{
-                padding: "8px 12px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                fontSize: "12px",
-                width: "100%",
-              }}
-              title={`Hide Row ${row + 1}`}
-            >
-              <EyeOff size={13} />
-              Hide Row {row + 1}
-            </button>
-            <button
-              onClick={() => toggleColVisibility(col)}
-              className="tbl-ctrl-btn"
-              style={{
-                padding: "8px 12px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                fontSize: "12px",
-                width: "100%",
-              }}
-              title={`Hide Column ${getColLabel(col)}`}
-            >
-              <EyeOff size={13} />
-              Hide Col {getColLabel(col)}
-            </button>
-          </div>
-        </div>
-
-        {/* Hidden Items Checklist */}
-        {(() => {
-          const hiddenRows = (currentSheet?.rows || [])
-            .map((r, rIdx) => ({ hidden: !!r.hidden, idx: rIdx }))
-            .filter((r) => r.hidden);
-          const hiddenCols = (currentSheet?.cols || [])
-            .map((c, cIdx) => ({ hidden: !!c.hidden, idx: cIdx }))
-            .filter((c) => c.hidden);
-
-          if (hiddenRows.length === 0 && hiddenCols.length === 0) return null;
-
-          return (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "10px",
-                border: "1px dashed var(--at-border)",
-                borderRadius: "var(--radius-sm)",
-                background: "var(--at-surface-2)",
-                padding: "12px",
-                marginTop: "4px",
-              }}
-            >
-              <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--at-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Hidden in Sheet</span>
-
-              {hiddenCols.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <span style={{ fontSize: "10px", color: "var(--at-text-soft)", fontWeight: 600 }}>Columns (click to unhide):</span>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                    {hiddenCols.map((c) => (
-                      <span
-                        key={c.idx}
-                        onClick={() => toggleColVisibility(c.idx)}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "3px 8px",
-                          borderRadius: "4px",
-                          background: "var(--at-surface)",
-                          border: "1px solid var(--at-border-light)",
-                          color: "var(--at-text-muted)",
-                          fontSize: "11px",
-                          fontWeight: 500,
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = "var(--clr-error)";
-                          e.currentTarget.style.color = "var(--clr-error)";
-                          e.currentTarget.style.background = "var(--clr-error-bg)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = "var(--at-border-light)";
-                          e.currentTarget.style.color = "var(--at-text-muted)";
-                          e.currentTarget.style.background = "var(--at-surface)";
-                        }}
-                        title="Click to unhide column"
-                      >
-                        Col {getColLabel(c.idx)} <span style={{ fontSize: "9px" }}>✕</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {hiddenRows.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
-                  <span style={{ fontSize: "10px", color: "var(--at-text-soft)", fontWeight: 600 }}>Rows (click to unhide):</span>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                    {hiddenRows.map((r) => (
-                      <span
-                        key={r.idx}
-                        onClick={() => toggleRowVisibility(r.idx)}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "3px 8px",
-                          borderRadius: "4px",
-                          background: "var(--at-surface)",
-                          border: "1px solid var(--at-border-light)",
-                          color: "var(--at-text-muted)",
-                          fontSize: "11px",
-                          fontWeight: 500,
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = "var(--clr-error)";
-                          e.currentTarget.style.color = "var(--clr-error)";
-                          e.currentTarget.style.background = "var(--clr-error-bg)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = "var(--at-border-light)";
-                          e.currentTarget.style.color = "var(--at-text-muted)";
-                          e.currentTarget.style.background = "var(--at-surface)";
-                        }}
-                        title="Click to unhide row"
-                      >
-                        Row {r.idx + 1} <span style={{ fontSize: "9px" }}>✕</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
-      </CollapsibleSection>
-
-      {/* Accordion 3: HTTP API Request */}
+      {/* Accordion 2: HTTP API Request */}
       <CollapsibleSection title="HTTP API Request" defaultOpen={false}>
         <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
           <Globe size={13} color="var(--at-accent)" />
@@ -743,7 +563,7 @@ export function CellControlPanel({
         />
       </CollapsibleSection>
 
-      {/* Accordion 4: Structure & Actions */}
+      {/* Accordion 3: Structure & Actions */}
       <CollapsibleSection title="Structure & Actions" defaultOpen={false}>
         {/* Text Operations */}
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -968,6 +788,18 @@ export function CellControlPanel({
             Clear Cell Value & Styles
           </button>
         </div>
+      </CollapsibleSection>
+
+      {/* Accordion 3: Triggers & Automations */}
+      <CollapsibleSection title="Triggers & Automations" defaultOpen={false}>
+        <TriggerEventPicker
+          sheets={sheets}
+          activeSheetIdx={activeSheetIdx}
+          triggers={triggers}
+          onAddTrigger={onAddTrigger}
+          onToggleTrigger={onToggleTrigger}
+          onDeleteTrigger={onDeleteTrigger}
+        />
       </CollapsibleSection>
 
       {showClearConfirm && (
