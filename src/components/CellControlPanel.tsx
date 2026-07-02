@@ -17,6 +17,7 @@ import {
   Binary,
   X,
   Sliders,
+  Globe,
 } from "lucide-react";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
@@ -28,6 +29,8 @@ import {
 } from "./SpreadsheetGrid";
 import { Trigger } from "./TriggersConsole";
 import { TriggerEventPicker } from "./TriggerEventPicker";
+import { HttpApiPanel } from "./HttpApiPanel";
+import { JsonViewer } from "./JsonViewer";
 
 interface CellControlPanelProps {
   selectedCell: { row: number; col: number };
@@ -527,7 +530,40 @@ export function CellControlPanel({
         </div>
       </CollapsibleSection>
 
-      {/* Accordion 2: Structure & Actions */}
+      {/* JSON Viewer — auto-shown when cell value is a JSON object or array */}
+      {(() => {
+        const v = cell.value.trim();
+        if (!v.startsWith("{") && !v.startsWith("[")) return null;
+        try {
+          const parsed = JSON.parse(v);
+          if (typeof parsed !== "object" || parsed === null) return null;
+        } catch {
+          return null;
+        }
+        return (
+          <CollapsibleSection title="JSON Viewer" defaultOpen={true}>
+            <JsonViewer rawJson={cell.value} />
+          </CollapsibleSection>
+        );
+      })()}
+
+      {/* Accordion 2: HTTP API Request */}
+      <CollapsibleSection title="HTTP API Request" defaultOpen={false}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+          <Globe size={13} color="var(--at-accent)" />
+          <span style={{ fontSize: "11.5px", color: "var(--at-text-muted)", lineHeight: 1.4 }}>
+            Configure and run HTTP requests using row data as inputs. Results are written back to the sheet.
+          </span>
+        </div>
+        <HttpApiPanel
+          sheets={sheets}
+          activeSheetIdx={activeSheetIdx}
+          selectedCell={selectedCell}
+          onSheetsChange={onSheetsChange}
+        />
+      </CollapsibleSection>
+
+      {/* Accordion 3: Structure & Actions */}
       <CollapsibleSection title="Structure & Actions" defaultOpen={false}>
         {/* Text Operations */}
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>

@@ -26,6 +26,8 @@ import {
   ChevronDown,
   User,
   Image as ImageIcon,
+  Square,
+  Play,
 } from "lucide-react";
 import { ColumnContextMenu } from "./ColumnContextMenu";
 import { RowContextMenu } from "./RowContextMenu";
@@ -104,6 +106,8 @@ interface SpreadsheetGridProps {
   toast?: (type: ToastType, title: string, description?: string) => void;
   /** Opens the formula generator sidebar panel */
   onOpenFormulaPanel?: () => void;
+  /** Called when the user clicks the eye icon on a row */
+  onViewRow?: (rowIdx: number) => void;
 }
 
 // Convert 0 -> A, 1 -> B, etc.
@@ -150,6 +154,7 @@ export function SpreadsheetGrid({
   onFilterColumn,
   toast,
   onOpenFormulaPanel,
+  onViewRow,
 }: SpreadsheetGridProps) {
   const currentSheet = sheets[activeSheetIdx] || {
     name: "Sheet 1",
@@ -302,6 +307,15 @@ export function SpreadsheetGrid({
     },
     [gridData]
   );
+
+  const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+
+  // Reset row selections when switching sheets
+  useEffect(() => {
+    setSelectedRows(new Set());
+    setHoveredRow(null);
+  }, [activeSheetIdx]);
 
   // Sync formula bar input value with selected cell value
   useEffect(() => {
@@ -758,8 +772,8 @@ export function SpreadsheetGrid({
                   top: 0,
                   left: 0,
                   zIndex: 30,
-                  width: "40px",
-                  height: "25px",
+                  width: "70px",
+                  height: "28px",
                   background: "#f4f4f2",
                   borderRight: "1px solid var(--at-border)",
                   borderBottom: "1px solid var(--at-border)",
@@ -784,7 +798,7 @@ export function SpreadsheetGrid({
                       position: "sticky",
                       top: 0,
                       zIndex: 20,
-                      width: "120px",
+                      width: "160px",
                       height: "28px",
                       background: headerBg,
                       borderRight: "1px solid var(--at-border)",
@@ -923,10 +937,15 @@ export function SpreadsheetGrid({
               return rowIndices.map((rowIdx) => {
                 const row = gridData[rowIdx];
                 if (!row || isRowHidden(rowIdx)) return null;
+                const isRowSelected = selectedRows.has(rowIdx);
                 return (
-                  <tr key={rowIdx}>
+                  <tr
+                    key={rowIdx}
+                  >
                     {/* Row Header */}
                     <td
+                      onMouseEnter={() => setHoveredRow(rowIdx)}
+                      onMouseLeave={() => setHoveredRow(null)}
                       onClick={() => onSelectedCellChange({ row: rowIdx, col: -1 })}
                       onContextMenu={(e) => {
                         e.preventDefault();
@@ -936,9 +955,13 @@ export function SpreadsheetGrid({
                         position: "sticky",
                         left: 0,
                         zIndex: 10,
-                        width: "40px",
-                        height: "22px",
-                        background: selectedCell?.row === rowIdx ? "#e2e8f0" : "#f4f4f2",
+                        width: "70px",
+                        height: "28px",
+                        background: selectedCell?.row === rowIdx
+                          ? "#e2e8f0"
+                          : isRowSelected
+                          ? "#eff6ff"
+                          : "#f4f4f2",
                         borderRight: "1px solid var(--at-border)",
                         borderBottom: "1px solid var(--at-border-light)",
                         fontSize: "10.5px",
@@ -948,9 +971,166 @@ export function SpreadsheetGrid({
                         verticalAlign: "middle",
                         userSelect: "none",
                         cursor: "pointer",
+                        padding: 0,
                       }}
                     >
-                      {rowIdx + 1}
+                      {hoveredRow === rowIdx ? (
+                        /* Three action buttons shown on hover */
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "3px" }}>
+                          {/* 1. Checkbox — select/deselect this row */}
+                          <button
+                            title={isRowSelected ? "Deselect row" : "Select row"}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedRows((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(rowIdx)) next.delete(rowIdx);
+                                else next.add(rowIdx);
+                                return next;
+                              });
+                            }}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: "20px",
+                              height: "20px",
+                            }}
+                          >
+                            {isRowSelected ? (
+                              <div
+                                style={{
+                                  width: "14px",
+                                  height: "14px",
+                                  borderRadius: "3px",
+                                  backgroundColor: "var(--at-accent)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  color: "#ffffff",
+                                  boxShadow: "0 1px 2px rgba(59, 130, 246, 0.25)",
+                                }}
+                              >
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              </div>
+                            ) : (
+                              <div
+                                style={{
+                                  width: "14px",
+                                  height: "14px",
+                                  borderRadius: "3px",
+                                  border: "1.5px solid #cbd5e1",
+                                  backgroundColor: "#ffffff",
+                                  transition: "all 0.15s ease",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.borderColor = "var(--at-accent)";
+                                  e.currentTarget.style.boxShadow = "0 0 0 2px var(--at-accent-light)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.borderColor = "#cbd5e1";
+                                  e.currentTarget.style.boxShadow = "none";
+                                }}
+                              />
+                            )}
+                          </button>
+
+                          {/* 2. View — open row details panel */}
+                          <button
+                            title="View row in panel"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onViewRow) onViewRow(rowIdx);
+                              else onSelectedCellChange({ row: rowIdx, col: 0 });
+                            }}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: "20px",
+                              height: "20px",
+                              borderRadius: "4px",
+                              color: "#64748b",
+                              transition: "all 0.15s ease",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.05)";
+                              e.currentTarget.style.color = "var(--at-accent)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = "transparent";
+                              e.currentTarget.style.color = "#64748b";
+                            }}
+                          >
+                            <Eye size={13} />
+                          </button>
+
+                          {/* 3. Play — placeholder for future video functionality */}
+                          <button
+                            title="Play (coming soon)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                            }}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: "20px",
+                              height: "20px",
+                              borderRadius: "4px",
+                              color: "#64748b",
+                              transition: "all 0.15s ease",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.05)";
+                              e.currentTarget.style.color = "var(--at-accent)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = "transparent";
+                              e.currentTarget.style.color = "#64748b";
+                            }}
+                          >
+                            <Play size={12} fill="currentColor" />
+                          </button>
+                        </div>
+                      ) : isRowSelected ? (
+                        /* Row is checked but not hovered — show checked indicator */
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <div
+                            style={{
+                              width: "14px",
+                              height: "14px",
+                              borderRadius: "3px",
+                              backgroundColor: "var(--at-accent)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#ffffff",
+                              boxShadow: "0 1px 2px rgba(59, 130, 246, 0.25)",
+                            }}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          </div>
+                        </div>
+                      ) : (
+                        rowIdx + 1
+                      )}
                     </td>
                     {/* Cells */}
                     {row.map((cell, colIdx) => {
@@ -978,12 +1158,14 @@ export function SpreadsheetGrid({
                             handleCellDoubleClick(rowIdx, colIdx, e)
                           }
                           style={{
-                            width: "120px",
-                            height: "22px",
+                            width: "160px",
+                            height: "28px",
                             borderRight: "1px solid var(--at-border-light)",
                             borderBottom: "1px solid var(--at-border-light)",
                             background: isSelected
                               ? "#f0f7ff"
+                              : isRowSelected
+                              ? "#f5f9ff"
                               : isSearchMatch
                               ? "#fefce8"
                               : bg || "var(--at-surface)",

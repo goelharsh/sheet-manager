@@ -10,6 +10,7 @@ import { useSheetsApi, CreatedSheet } from "@/hooks/useSheetsApi";
 import { SpreadsheetGrid, ImportedSheet, getColLabel } from "@/components/SpreadsheetGrid";
 import { CellControlPanel } from "@/components/CellControlPanel";
 import { FormulaGeneratorPanel } from "@/components/FormulaGeneratorPanel";
+import { RowDetailPanel } from "@/components/RowDetailPanel";
 import { TriggersConsole, Trigger, LogEntry } from "@/components/TriggersConsole";
 import { CertificateMerge } from "@/components/steps/CertificateMerge";
 import { FilterToolbar, ViewType } from "@/components/FilterToolbar";
@@ -82,7 +83,8 @@ export function SheetManager() {
     row: number;
     col: number;
   } | null>(null);
-  const [sidebarMode, setSidebarMode] = useState<"step" | "cell" | "formula">("step");
+  const [sidebarMode, setSidebarMode] = useState<"step" | "cell" | "formula" | "row">("step");
+  const [selectedRowIdx, setSelectedRowIdx] = useState<number | null>(null);
   const [importedFileName, setImportedFileName] = useState<string>("");
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -823,6 +825,13 @@ export function SheetManager() {
     }
   };
 
+  const handleViewRow = (rowIdx: number) => {
+    setSelectedRowIdx(rowIdx);
+    setSidebarMode("row");
+    setSidebarOpen(true);
+    setIsSidebarCollapsed(false);
+  };
+
   const handleExportExcel = () => {
     if (!importedSheets) return;
     try {
@@ -913,6 +922,21 @@ export function SheetManager() {
 
   /* ─── Sidebar content per step ───────────────────────────────── */
   const sidebarContent = () => {
+    if (sidebarMode === "row" && selectedRowIdx !== null && importedSheets) {
+      return (
+        <RowDetailPanel
+          rowIdx={selectedRowIdx}
+          sheets={importedSheets}
+          activeSheetIdx={activeSheetIdx}
+          onSheetsChange={handleSheetsChange}
+          onClose={() => {
+            setSidebarMode("step");
+            setSelectedRowIdx(null);
+          }}
+        />
+      );
+    }
+
     if (sidebarMode === "cell" && selectedCell && importedSheets) {
       return (
         <CellControlPanel
@@ -1064,6 +1088,7 @@ export function SheetManager() {
               setIsSidebarCollapsed(false);
               setSelectedCell(null);
             }}
+            onViewRow={handleViewRow}
           />
         );
       };
@@ -1572,6 +1597,9 @@ export function SheetManager() {
                       setSelectedCell(null);
                     } else if (sidebarMode === "formula") {
                       setSidebarMode("step");
+                    } else if (sidebarMode === "row") {
+                      setSidebarMode("step");
+                      setSelectedRowIdx(null);
                     }
                   }
                 } else {
@@ -1586,7 +1614,9 @@ export function SheetManager() {
                   ? "ƒ Formula"
                   : sidebarMode === "cell"
                     ? "Cell Editor"
-                    : currentStepMeta.label}
+                    : sidebarMode === "row"
+                      ? "Row Details"
+                      : currentStepMeta.label}
             </button>
           </div>
         </header>
@@ -1672,11 +1702,16 @@ export function SheetManager() {
                 setSelectedCell(null);
               } else if (sidebarMode === "formula") {
                 setSidebarMode("step");
+              } else if (sidebarMode === "row") {
+                setSidebarMode("step");
+                setSelectedRowIdx(null);
               }
             }}
             title={
               sidebarMode === "formula"
                 ? "ƒ Formula generator"
+                : sidebarMode === "row" && selectedRowIdx !== null
+                ? `Row ${selectedRowIdx + 1} Details`
                 : sidebarMode === "cell" && selectedCell
                 ? `Cell ${String.fromCharCode(65 + selectedCell.col)}${selectedCell.row + 1} Editor`
                 : currentStepMeta.sidebarTitle
